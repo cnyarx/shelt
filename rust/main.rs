@@ -508,7 +508,7 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
                 Some(Ok(Message::Text(text))) => {
                     let Ok(message) = serde_json::from_slice::<ClientMessage>(text.as_bytes()) else { break; };
                     match message {
-                        ClientMessage::Input { data } => { if writer.write_all(data.as_bytes()).is_err() { break; } }
+                        ClientMessage::Input { data } if writer.write_all(data.as_bytes()).is_err() => break,
                         ClientMessage::Resize { cols, rows } if (1..=1000).contains(&cols) && (1..=500).contains(&rows) => { let _ = pair.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }); }
                         ClientMessage::PastePath { path } => {
                             let path = PathBuf::from(path);
@@ -520,7 +520,7 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
                 Some(Ok(Message::Binary(bytes))) => {
                     let Ok(message) = serde_json::from_slice::<ClientMessage>(&bytes) else { break; };
                     match message {
-                        ClientMessage::Input { data } => { if writer.write_all(data.as_bytes()).is_err() { break; } }
+                        ClientMessage::Input { data } if writer.write_all(data.as_bytes()).is_err() => break,
                         ClientMessage::Resize { cols, rows } if (1..=1000).contains(&cols) && (1..=500).contains(&rows) => { let _ = pair.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }); }
                         ClientMessage::PastePath { path } => {
                             let path = PathBuf::from(path);

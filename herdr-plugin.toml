@@ -1,6 +1,6 @@
 id = "shelt"
 name = "Shelt"
-version = "0.1.0"
+version = "0.0.1"
 min_herdr_version = "0.8.2"
 description = "Web terminal with image paste; opens Herdr when available, otherwise the login shell"
 platforms = ["linux", "macos"]
