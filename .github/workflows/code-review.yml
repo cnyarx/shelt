@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         timeout-minutes: 5
         run: bun install --frozen-lockfile --registry=https://registry.npmjs.org
+
+      - name: Build web client
+        run: bun run build
 
       - name: Run TypeScript tests
         run: bun test
