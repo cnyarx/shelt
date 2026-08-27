@@ -1,5 +1,9 @@
 # Shelt
 
+<p align="center">
+  <img src="public/favicon.png" alt="Shelt logo" width="160" height="160" />
+</p>
+
 A minimal, self-contained web terminal for Herdr or your login shell, with Unicode-safe rendering and clipboard image paste.
 
 English · [简体中文](README.zh-CN.md)

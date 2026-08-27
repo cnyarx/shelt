@@ -1,5 +1,9 @@
 # Shelt
 
+<p align="center">
+  <img src="public/favicon.png" alt="Shelt logo" width="160" height="160" />
+</p>
+
 一个面向 Herdr 或用户登录 Shell 的极简、自包含 Web 终端，支持可靠的 Unicode 渲染和剪贴板图片粘贴。
 
 [English](README.md) · 简体中文
