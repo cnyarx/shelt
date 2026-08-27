@@ -1,0 +1,40 @@
+id = "shelt"
+name = "Shelt"
+version = "0.1.0"
+min_herdr_version = "0.8.2"
+description = "Web terminal with image paste; opens Herdr when available, otherwise the login shell"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["bash", "scripts/shelt-ctl.sh", "build"]
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "start"
+title = "Start Shelt web terminal"
+contexts = ["workspace"]
+command = ["bash", "scripts/shelt-ctl.sh", "start"]
+
+[[actions]]
+id = "stop"
+title = "Stop Shelt web terminal"
+contexts = ["workspace"]
+command = ["bash", "scripts/shelt-ctl.sh", "stop"]
+
+[[actions]]
+id = "restart"
+title = "Restart Shelt web terminal"
+contexts = ["workspace"]
+command = ["bash", "scripts/shelt-ctl.sh", "restart"]
+
+[[actions]]
+id = "status"
+title = "Show Shelt status"
+contexts = ["workspace"]
+command = ["bash", "scripts/shelt-ctl.sh", "status"]
+
+[[actions]]
+id = "url"
+title = "Show Shelt URL"
+contexts = ["workspace"]
+command = ["bash", "scripts/shelt-ctl.sh", "url"]
