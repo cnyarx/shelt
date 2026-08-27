@@ -1,0 +1,142 @@
+# Shelt
+
+一个面向 Herdr 或用户登录 Shell 的极简、自包含 Web 终端，支持可靠的 Unicode 渲染和剪贴板图片粘贴。
+
+[English](README.md) · 简体中文
+
+Shelt 通过单一 xterm.js 界面在浏览器中提供真实 PTY。检测到 Herdr 时，它会连接现有的默认共享 Herdr 会话；否则自动打开当前用户的登录 Shell。
+
+## 主要功能
+
+- 连接现有的 Herdr 默认共享会话，不创建额外 session
+- Herdr 不可用时自动回退到当前用户的登录 Shell
+- 正确显示中文、Emoji、组合字符和终端边框字符
+- 支持键盘、鼠标、窗口缩放和文本粘贴
+- 支持通过 `Ctrl+V` / `Cmd+V` 粘贴图片：图片以私有权限保存，并将绝对路径插入终端
+- 支持经过大小和格式校验的 OSC 52 剪贴板复制
+- 浏览器资源嵌入原生可执行文件，构建后可独立运行
+- 支持 `start`、`stop`、`restart`、`status`、`url`、`logs` 等后台服务命令
+- 仓库内置 Herdr 插件清单
+
+Shelt 不会重新实现标签页、侧栏、输入框等业务界面。浏览器只负责忠实显示底层程序输出的终端内容。
+
+## 环境要求
+
+构建环境：
+
+- Bun 1.3.14 或更高版本
+- Rust 1.95 或更高版本
+- Linux，用于构建独立可执行文件
+
+运行环境：
+
+- 编译完成后不依赖 Bun、Rust、`node_modules` 或源码目录
+- Herdr 0.8.2 或更高版本为可选依赖，仅 Herdr 模式需要
+
+## 构建
+
+```bash
+git clone https://github.com/cnyarx/shelt.git
+cd shelt
+bun install --frozen-lockfile
+bun run compile
+```
+
+独立可执行文件生成在 `release/shelt`。
+
+## 使用
+
+以后台服务方式启动：
+
+```bash
+./release/shelt
+```
+
+打开命令输出的地址，默认是：
+
+```text
+http://127.0.0.1:8790
+```
+
+服务管理命令：
+
+```bash
+./release/shelt start
+./release/shelt stop
+./release/shelt restart
+./release/shelt status
+./release/shelt url
+./release/shelt logs
+./release/shelt foreground
+```
+
+从源码运行：
+
+```bash
+bun install --frozen-lockfile
+bun run build
+$HOME/.cargo/bin/cargo run -- foreground
+```
+
+## 运行模式
+
+```text
+SHELT_MODE=auto    # 默认：优先使用 Herdr，否则打开登录 Shell
+SHELT_MODE=herdr   # 强制使用 Herdr 0.8.2+
+SHELT_MODE=shell   # 强制使用普通 Shell
+```
+
+Shell 查找顺序：
+
+1. `SHELT_SHELL`
+2. `$SHELL`
+3. `/etc/passwd` 中的登录 Shell
+4. `bash`、`zsh`、`sh`
+
+命令会以参数数组直接启动，不会通过 `/bin/sh -c` 传递启动配置。
+
+## 配置
+
+```bash
+SHELT_MODE=auto
+SHELT_SHELL=
+SHELT_HERDR_BIN=herdr
+SHELT_HOST=127.0.0.1
+SHELT_PORT=8790
+SHELT_PUBLIC_HOSTS=127.0.0.1:8790,localhost:8790
+SHELT_ALLOWED_ORIGINS=
+SHELT_UPLOAD_DIR=
+SHELT_STATE_DIR=
+```
+
+同一时间只允许一个浏览器 controller。新连接会断开旧连接，避免终端尺寸、鼠标坐标和键盘控制权产生歧义。
+
+## Herdr 插件
+
+仓库包含 `herdr-plugin.toml`，可以将 Shelt 安装或链接为 Herdr 插件，并使用清单中定义的操作。
+
+Shell 模式可以独立运行，不依赖 Herdr。
+
+## 安全说明
+
+Shelt 提供完整的交互式终端能力，能够连接它的人也能控制底层 PTY。
+
+- 默认保持本机回环地址监听
+- 不要将 Shelt 直接暴露到公网
+- 远程使用时，应放在带身份认证的私有 HTTPS 反向代理之后
+- 使用代理或自定义域名时，配置 `SHELT_PUBLIC_HOSTS` 和 `SHELT_ALLOWED_ORIGINS`
+- 上传的图片使用私有文件权限保存
+
+## 开发验证
+
+```bash
+bun test
+bun run typecheck
+bun run compile
+$HOME/.cargo/bin/cargo test
+$HOME/.cargo/bin/cargo check
+```
+
+## 许可证
+
+[MIT](LICENSE)

@@ -1,58 +1,99 @@
 # Shelt
 
-Shelt is a minimal web terminal with clipboard image paste. By default it attaches to the existing default Herdr session
-when Herdr is installed; without Herdr it automatically opens the current user's login shell. The
-browser surface is a single xterm.js terminal — no tabs, sidebar, composer, or other business UI is
-recreated by Shelt.
+A minimal, self-contained web terminal for Herdr or your login shell, with Unicode-safe rendering and clipboard image paste.
 
-## Modes
+English · [简体中文](README.zh-CN.md)
 
-```text
-SHELT_MODE=auto    # default: Herdr when available, otherwise the current shell
-SHELT_MODE=herdr   # require Herdr 0.8.2+
-SHELT_MODE=shell   # always open a normal shell
-```
+Shelt exposes a real PTY in the browser through a single xterm.js surface. When Herdr is installed, it attaches to the existing default shared Herdr session. Otherwise, it opens the current user's login shell.
 
-Shell selection order is `SHELT_SHELL`, `$SHELL`, the passwd login shell, then `bash`, `zsh`, `sh`.
-Commands are spawned directly as argument arrays; Shelt never passes configuration through
-`/bin/sh -c`.
+## Features
 
-In either mode, keyboard, mouse, resize, text paste, and image paste share the same PTY path. Pasting
-an image with Ctrl+V / Cmd+V saves it on the host with private permissions and pastes its absolute
-path at the current terminal cursor.
+- Connects to the existing default Herdr session without creating a separate session
+- Automatically falls back to the current user's login shell
+- Correct terminal-cell rendering for CJK text, emoji, combining characters, and box-drawing glyphs
+- Keyboard, mouse, resize, and text paste support over a real PTY
+- Clipboard image paste with `Ctrl+V` / `Cmd+V`: saves the image privately and inserts its absolute path
+- OSC 52 clipboard copy support with size and format validation
+- One self-contained native executable with embedded browser assets
+- Background daemon lifecycle commands: `start`, `stop`, `restart`, `status`, `url`, and `logs`
+- Herdr plugin manifest included
+
+Shelt deliberately does not recreate tabs, sidebars, composers, or other application UI. The browser displays the terminal exactly as the underlying program renders it.
 
 ## Requirements
 
-- Bun 1.3.14 or newer for building the browser client
-- Rust 1.95 or newer for building the native server
-- Herdr 0.8.2 or newer only when using Herdr mode
+Build requirements:
 
-## Standalone executable
+- Bun 1.3.14 or newer
+- Rust 1.95 or newer
+- Linux for the standalone executable
 
-Build one self-contained Linux executable:
+Runtime requirements:
+
+- No Bun, Rust, `node_modules`, or source checkout is required after compilation
+- Herdr 0.8.2 or newer is optional and only required for Herdr mode
+
+## Build
 
 ```bash
-bun install
+git clone https://github.com/cnyarx/shelt.git
+cd shelt
+bun install --frozen-lockfile
 bun run compile
+```
+
+The self-contained executable is created at `release/shelt`.
+
+## Usage
+
+Start Shelt as a background daemon:
+
+```bash
 ./release/shelt
 ```
 
-Running `shelt` starts a background daemon, prints a clickable URL, and returns to the shell. Use
-`shelt status`, `shelt stop`, `shelt restart`, or `shelt foreground` for lifecycle control.
+Open the printed URL, which defaults to:
 
-The executable is a native Rust server with the browser assets embedded. It does not need Bun, Rust,
-`node_modules`, `dist`, or the source repository at runtime. Click the printed
-`http://127.0.0.1:8790` link to open Shelt.
+```text
+http://127.0.0.1:8790
+```
 
-## Run from source
+Lifecycle commands:
 
 ```bash
-bun install
+./release/shelt start
+./release/shelt stop
+./release/shelt restart
+./release/shelt status
+./release/shelt url
+./release/shelt logs
+./release/shelt foreground
+```
+
+Run from source:
+
+```bash
+bun install --frozen-lockfile
 bun run build
 $HOME/.cargo/bin/cargo run -- foreground
 ```
 
-Open `http://127.0.0.1:8790`.
+## Modes
+
+```text
+SHELT_MODE=auto    # Default: use Herdr when available, otherwise use the login shell
+SHELT_MODE=herdr   # Require Herdr 0.8.2+
+SHELT_MODE=shell   # Always open a normal shell
+```
+
+Shell resolution order:
+
+1. `SHELT_SHELL`
+2. `$SHELL`
+3. The login shell from `/etc/passwd`
+4. `bash`, `zsh`, then `sh`
+
+Commands are spawned directly as argument arrays. Shelt never passes launch configuration through `/bin/sh -c`.
 
 ## Configuration
 
@@ -65,13 +106,37 @@ SHELT_PORT=8790
 SHELT_PUBLIC_HOSTS=127.0.0.1:8790,localhost:8790
 SHELT_ALLOWED_ORIGINS=
 SHELT_UPLOAD_DIR=
+SHELT_STATE_DIR=
 ```
 
-Keep Shelt on loopback. Put an authenticated private HTTPS reverse proxy in front when remote access
-is needed. Do not expose it publicly: anyone who can connect can control the terminal.
+Only one browser controller is active at a time. A new controller disconnects the previous one so terminal size, mouse coordinates, and keyboard ownership remain unambiguous.
 
-Only one browser controller is active at a time. Opening a newer controller disconnects the older
-one so terminal size, mouse coordinates, and keyboard ownership stay unambiguous.
+## Herdr plugin
 
-The repository includes `herdr-plugin.toml`, so Herdr users can install or link it as a plugin. The
-standalone Shell mode does not depend on Herdr.
+The repository includes `herdr-plugin.toml`. Herdr users can install or link Shelt as a plugin and use the actions defined in the manifest.
+
+Shell mode is standalone and does not depend on Herdr.
+
+## Security
+
+Shelt provides interactive terminal access. Anyone who can connect to it can control the underlying PTY.
+
+- Keep the default loopback binding unless remote access is explicitly required
+- Do not expose Shelt directly to the public internet
+- Use an authenticated private HTTPS reverse proxy for remote access
+- Configure `SHELT_PUBLIC_HOSTS` and `SHELT_ALLOWED_ORIGINS` when using a proxy or custom hostname
+- Uploaded images are stored with private permissions
+
+## Development
+
+```bash
+bun test
+bun run typecheck
+bun run compile
+$HOME/.cargo/bin/cargo test
+$HOME/.cargo/bin/cargo check
+```
+
+## License
+
+[MIT](LICENSE)
