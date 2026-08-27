@@ -19,4 +19,7 @@ if (!result.success) {
 }
 await cp(join(root, "public/index.html"), join(dist, "index.html"));
 await cp(join(root, "public/style.css"), join(dist, "style.css"));
+for (const favicon of ["favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]) {
+  await cp(join(root, "public", favicon), join(dist, favicon));
+}
 console.log("Built Shelt web client");

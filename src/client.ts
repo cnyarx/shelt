@@ -1,7 +1,8 @@
-import { Terminal } from "@xterm/xterm";
+import { CanvasAddon } from "@xterm/addon-canvas";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { CanvasAddon } from "@xterm/addon-canvas";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { decodeOsc52 } from "./clipboard.ts";
 import { createSemanticAnsiState, normalizeSemanticAnsiChunk, resetSemanticAnsiState } from "./ansi.ts";
@@ -25,6 +26,21 @@ terminal.loadAddon(unicode11);
 terminal.unicode.activeVersion = "11";
 terminal.open(mount);
 terminal.loadAddon(new CanvasAddon());
+terminal.loadAddon(
+  new WebLinksAddon(
+    (_event, url) => {
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    {
+      hover: (_event, url) => {
+        mount.title = url;
+      },
+      leave: () => {
+        mount.removeAttribute("title");
+      },
+    },
+  ),
+);
 fit.fit();
 terminal.focus();
 

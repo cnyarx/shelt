@@ -32,6 +32,10 @@ const INDEX_HTML: &[u8] = include_bytes!("../dist/index.html");
 const STYLE_CSS: &[u8] = include_bytes!("../dist/style.css");
 const CLIENT_CSS: &[u8] = include_bytes!("../dist/client.css");
 const CLIENT_JS: &[u8] = include_bytes!("../dist/client.js");
+const FAVICON_PNG: &[u8] = include_bytes!("../dist/favicon.png");
+const FAVICON_16_PNG: &[u8] = include_bytes!("../dist/favicon-16.png");
+const FAVICON_32_PNG: &[u8] = include_bytes!("../dist/favicon-32.png");
+const FAVICON_64_PNG: &[u8] = include_bytes!("../dist/favicon-64.png");
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 struct LaunchTarget {
@@ -331,6 +335,10 @@ async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: 
         "/style.css" => (STYLE_CSS, "text/css; charset=utf-8"),
         "/client.css" => (CLIENT_CSS, "text/css; charset=utf-8"),
         "/client.js" => (CLIENT_JS, "text/javascript; charset=utf-8"),
+        "/favicon.png" => (FAVICON_PNG, "image/png"),
+        "/favicon-16.png" => (FAVICON_16_PNG, "image/png"),
+        "/favicon-32.png" => (FAVICON_32_PNG, "image/png"),
+        "/favicon-64.png" => (FAVICON_64_PNG, "image/png"),
         _ => return secure((StatusCode::NOT_FOUND, "Not found").into_response()),
     };
     let mut response = bytes.to_vec().into_response();
