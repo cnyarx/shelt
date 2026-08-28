@@ -111,9 +111,18 @@ SHELT_PUBLIC_HOSTS=127.0.0.1:8790,localhost:8790
 SHELT_ALLOWED_ORIGINS=
 SHELT_UPLOAD_DIR=
 SHELT_STATE_DIR=
+SHELT_SECURE_COOKIE=false
 ```
 
 同一时间只允许一个浏览器 controller。新连接会断开旧连接，避免终端尺寸、鼠标坐标和键盘控制权产生歧义。
+
+## 密码访问
+
+新的 Shelt 状态目录首次被浏览器打开时，必须先创建访问密码。Shelt 只会把 Argon2id 密码哈希保存到 `${SHELT_STATE_DIR}/auth.json`，文件权限为仅当前用户可读写。之后必须输入密码，才能使用 WebSocket 终端和图片上传接口。
+
+勾选“Remember this browser”会创建一个有效期 30 天的 `HttpOnly`、`SameSite=Strict` 会话 Cookie，不会把明文密码写入浏览器 JavaScript 存储。会话只保存在服务进程内存中，Shelt 重启后需要重新登录，但已设置的密码仍然有效。
+
+通过 HTTPS 提供 Shelt 时，请设置 `SHELT_SECURE_COOKIE=true`。如果忘记密码，先停止 Shelt，删除 `${SHELT_STATE_DIR}/auth.json`，再重新启动并设置新密码。
 
 ## Herdr 插件
 

@@ -13,7 +13,21 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <main id="terminal" aria-label="Shelt terminal"></main>
+    <main id="auth" aria-labelledby="auth-title">
+      <form id="auth-form" autocomplete="on">
+        <img src="/favicon.png" alt="" width="112" height="112" />
+        <h1 id="auth-title">Unlock Shelt</h1>
+        <p id="auth-description">Enter your password to open the terminal.</p>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="256" />
+        <label id="confirm-row" for="confirm-password" hidden>Confirm password</label>
+        <input id="confirm-password" name="confirm-password" type="password" autocomplete="new-password" minlength="8" maxlength="256" hidden />
+        <label class="remember"><input id="remember" type="checkbox" /> Remember this browser</label>
+        <p id="auth-error" role="alert" aria-live="polite"></p>
+        <button id="auth-submit" type="submit">Unlock</button>
+      </form>
+    </main>
+    <main id="terminal" aria-label="Shelt terminal" hidden></main>
     <script type="module" src="/client.js"></script>
   </body>
 </html>

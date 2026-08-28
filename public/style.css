@@ -1,7 +1,22 @@
 html, body, #terminal { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
 body { overscroll-behavior: none; }
+[hidden] { display: none !important; }
 #terminal { box-sizing: border-box; padding: 0; }
 .xterm, .xterm-viewport, .xterm-screen { height: 100%; }
+#auth { min-height: 100%; display: grid; place-items: center; box-sizing: border-box; padding: 24px; color: #edf8ff; background: radial-gradient(circle at 50% 25%, #123349 0, #07141d 42%, #02070a 100%); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
+#auth-form { width: min(360px, 100%); box-sizing: border-box; padding: 30px; border: 1px solid #1d4f69; border-radius: 20px; background: rgba(5, 19, 27, .92); box-shadow: 0 24px 80px rgba(0, 0, 0, .45); }
+#auth-form > img { display: block; margin: -4px auto 14px; border-radius: 50%; }
+#auth-form h1 { margin: 0; text-align: center; font-size: 25px; line-height: 1.2; }
+#auth-description { min-height: 45px; margin: 10px 0 22px; text-align: center; color: #9eb8c7; }
+#auth-form > label:not(.remember) { display: block; margin: 14px 0 6px; color: #cce8f7; font-size: 13px; font-weight: 650; }
+#auth-form > input { width: 100%; box-sizing: border-box; padding: 11px 12px; color: #fff; border: 1px solid #315f78; border-radius: 9px; outline: none; background: #02090d; font: inherit; }
+#auth-form > input:focus { border-color: #31bafd; box-shadow: 0 0 0 3px rgba(49, 186, 253, .16); }
+.remember { display: flex; align-items: center; gap: 8px; margin: 17px 0 0; color: #b9d0dc; cursor: pointer; }
+.remember input { width: 16px; height: 16px; accent-color: #31bafd; }
+#auth-error { min-height: 22px; margin: 10px 0; color: #ff9d9d; font-size: 13px; }
+#auth-submit { width: 100%; padding: 11px 16px; color: #04202e; border: 0; border-radius: 9px; background: #31bafd; font: inherit; font-weight: 750; cursor: pointer; }
+#auth-submit:hover { background: #62cbff; }
+#auth-submit:disabled { opacity: .55; cursor: wait; }
 #manual-copy { position: fixed; inset: 50% auto auto 50%; z-index: 10; width: min(640px, calc(100% - 48px)); transform: translate(-50%, -50%); box-sizing: border-box; padding: 20px; border: 1px solid #777; border-radius: 8px; color: #fff; background: #1b1b1b; box-shadow: 0 12px 48px #000; font: 14px/1.4 sans-serif; }
 #manual-copy p { margin: 0 0 12px; }
 #manual-copy textarea { display: block; width: 100%; min-height: 160px; box-sizing: border-box; margin-bottom: 12px; padding: 8px; resize: vertical; color: #fff; background: #000; font: 14px/1.4 ui-monospace, monospace; }

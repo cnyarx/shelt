@@ -1,3 +1,6 @@
+mod auth;
+
+use auth::{password_error, AuthStore, MAX_AUTH_BODY_BYTES};
 use axum::{
     body::Bytes,
     extract::{
@@ -58,12 +61,21 @@ struct AppState {
     upload_dir: PathBuf,
     uploaded_paths: Arc<Mutex<HashSet<PathBuf>>>,
     active: Arc<Mutex<Option<ActiveSession>>>,
+    auth: AuthStore,
+    failed_logins: Arc<Mutex<u32>>,
 }
 
 #[derive(Deserialize)]
 struct WsQuery {
     cols: Option<u16>,
     rows: Option<u16>,
+}
+
+#[derive(Deserialize)]
+struct AuthRequest {
+    password: String,
+    #[serde(default)]
+    remember: bool,
 }
 
 #[derive(Deserialize)]
@@ -78,11 +90,8 @@ enum ClientMessage {
 }
 
 #[derive(Serialize)]
-struct Health<'a> {
+struct Health {
     ok: bool,
-    mode: &'a str,
-    command: String,
-    args: &'a [String],
 }
 
 #[tokio::main]
@@ -248,6 +257,10 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         });
     fs::create_dir_all(&upload_dir)?;
     fs::set_permissions(&upload_dir, fs::Permissions::from_mode(0o700))?;
+    let auth = AuthStore::load(
+        state_dir().join("auth.json"),
+        env::var("SHELT_SECURE_COOKIE").as_deref() == Ok("true"),
+    )?;
     let state = AppState {
         launch: launch.clone(),
         public_hosts: Arc::new(
@@ -267,9 +280,21 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         upload_dir,
         uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
         active: Arc::new(Mutex::new(None)),
+        auth,
+        failed_logins: Arc::new(Mutex::new(0)),
     };
     let app = Router::new()
         .route("/ws", any(ws_handler))
+        .route("/api/auth/status", get(auth_status_handler))
+        .route(
+            "/api/auth/setup",
+            post(auth_setup_handler).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route(
+            "/api/auth/login",
+            post(auth_login_handler).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route("/api/auth/logout", post(auth_logout_handler))
         .route(
             "/api/upload",
             post(upload_handler).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
@@ -311,19 +336,117 @@ async fn shutdown_signal() {
     }
 }
 
-async fn health_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+async fn auth_status_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if !allowed_host(&state, &headers) {
         return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
     }
     secure(
-        Json(Health {
-            ok: true,
-            mode: state.launch.mode,
-            command: state.launch.command.display().to_string(),
-            args: &state.launch.args,
-        })
+        Json(serde_json::json!({
+            "setupRequired": state.auth.setup_required(),
+            "authenticated": authenticated(&state, &headers),
+        }))
         .into_response(),
     )
+}
+
+async fn auth_setup_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AuthRequest>,
+) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if let Some(error) = password_error(&request.password) {
+        return secure(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+                .into_response(),
+        );
+    }
+    match state.auth.setup(&request.password) {
+        Ok(true) => {
+            let token = state.auth.create_session(request.remember);
+            with_cookie(
+                secure(Json(serde_json::json!({"ok": true})).into_response()),
+                state.auth.session_cookie(&token, request.remember),
+            )
+        }
+        Ok(false) => secure(
+            (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": "Password is already configured"})),
+            )
+                .into_response(),
+        ),
+        Err(error) => secure(
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        ),
+    }
+}
+
+async fn auth_login_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AuthRequest>,
+) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if password_error(&request.password).is_some() || !state.auth.verify(&request.password) {
+        let delay = {
+            let mut failures = state.failed_logins.lock().unwrap();
+            *failures = (*failures + 1).min(6);
+            Duration::from_millis((100u64 * 2u64.pow(*failures - 1)).min(2000))
+        };
+        tokio::time::sleep(delay).await;
+        return secure(
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "Invalid password"})),
+            )
+                .into_response(),
+        );
+    }
+    *state.failed_logins.lock().unwrap() = 0;
+    let token = state.auth.create_session(request.remember);
+    with_cookie(
+        secure(Json(serde_json::json!({"ok": true})).into_response()),
+        state.auth.session_cookie(&token, request.remember),
+    )
+}
+
+async fn auth_logout_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    state.auth.revoke(cookie_header(&headers));
+    with_cookie(
+        secure(Json(serde_json::json!({"ok": true})).into_response()),
+        state.auth.expired_cookie(),
+    )
+}
+
+async fn health_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    secure(Json(Health { ok: true }).into_response())
 }
 
 async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: Uri) -> Response {
@@ -361,6 +484,9 @@ async fn upload_handler(
     }
     if !allowed_origin(&state, &headers) {
         return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
     }
     let content_type = headers
         .get(header::CONTENT_TYPE)
@@ -425,6 +551,9 @@ async fn ws_handler(
     }
     if !allowed_origin(&state, &headers) {
         return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
     }
     let cols = query.cols.unwrap_or(120).clamp(1, 1000);
     let rows = query.rows.unwrap_or(40).clamp(1, 500);
@@ -555,6 +684,20 @@ fn kill_group(pgid: i32) {
             libc::kill(-pgid, libc::SIGKILL);
         }
     }
+}
+fn with_cookie(mut response: Response, cookie: String) -> Response {
+    if let Ok(value) = HeaderValue::from_str(&cookie) {
+        response.headers_mut().insert(header::SET_COOKIE, value);
+    }
+    response
+}
+fn cookie_header(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+}
+fn authenticated(state: &AppState, headers: &HeaderMap) -> bool {
+    state.auth.authenticated(cookie_header(headers))
 }
 fn secure(mut response: Response) -> Response {
     let headers = response.headers_mut();
@@ -796,6 +939,12 @@ mod tests {
             upload_dir: PathBuf::new(),
             uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
             active: Arc::new(Mutex::new(None)),
+            auth: AuthStore::load(
+                env::temp_dir().join(format!("shelt-auth-test-{}", std::process::id())),
+                false,
+            )
+            .unwrap(),
+            failed_logins: Arc::new(Mutex::new(0)),
         };
         let mut headers = HeaderMap::new();
         headers.insert(

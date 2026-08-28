@@ -111,9 +111,18 @@ SHELT_PUBLIC_HOSTS=127.0.0.1:8790,localhost:8790
 SHELT_ALLOWED_ORIGINS=
 SHELT_UPLOAD_DIR=
 SHELT_STATE_DIR=
+SHELT_SECURE_COOKIE=false
 ```
 
 Only one browser controller is active at a time. A new controller disconnects the previous one so terminal size, mouse coordinates, and keyboard ownership remain unambiguous.
+
+## Password access
+
+The first browser that opens a new Shelt state directory must create a password. Shelt stores only an Argon2id password hash in `${SHELT_STATE_DIR}/auth.json` with private file permissions. Later visits must enter that password before the WebSocket terminal or image upload API can be used.
+
+"Remember this browser" creates a 30-day `HttpOnly`, `SameSite=Strict` session cookie. The password is never stored in browser JavaScript storage. Sessions are held in memory and are invalidated when Shelt restarts; the password remains configured.
+
+When Shelt is served through HTTPS, set `SHELT_SECURE_COOKIE=true`. If the password is forgotten, stop Shelt, remove `${SHELT_STATE_DIR}/auth.json`, and start it again to create a new password.
 
 ## Herdr plugin
 
