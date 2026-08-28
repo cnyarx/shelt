@@ -175,6 +175,10 @@ async function uploadImage(file: File) {
   send({ type: "paste-path", path: result.path });
 }
 
+function openLink(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function startTerminal() {
   authMount.hidden = true;
   mount.hidden = false;
@@ -191,6 +195,9 @@ function startTerminal() {
     allowProposedApi: true,
     scrollback: 0,
     theme: { background: "#000000" },
+    linkHandler: {
+      activate: (_event, url) => openLink(url),
+    },
   });
   fit = new FitAddon();
   const unicode11 = new Unicode11Addon();
@@ -199,7 +206,7 @@ function startTerminal() {
   terminal.unicode.activeVersion = "11";
   terminal.open(mount);
   terminal.loadAddon(new CanvasAddon());
-  terminal.loadAddon(new WebLinksAddon((_event, url) => window.open(url, "_blank", "noopener,noreferrer"), {
+  terminal.loadAddon(new WebLinksAddon((_event, url) => openLink(url), {
     hover: (_event, url) => { mount.title = url; },
     leave: () => { mount.removeAttribute("title"); },
   }));

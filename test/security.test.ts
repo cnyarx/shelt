@@ -30,6 +30,16 @@ describe("image paste", () => {
   });
 });
 
+describe("terminal links", () => {
+  test("opens plain and OSC 8 links without the xterm confirmation dialog", async () => {
+    const source = await Bun.file(new URL("../src/client.ts", import.meta.url)).text();
+    expect(source).toContain('window.open(url, "_blank", "noopener,noreferrer")');
+    expect(source).toContain("linkHandler: {");
+    expect(source).toContain("activate: (_event, url) => openLink(url)");
+    expect(source).toContain("new WebLinksAddon((_event, url) => openLink(url)");
+  });
+});
+
 describe("terminal CSP", () => {
   test("allows xterm runtime styles without allowing inline scripts", async () => {
     const source = await Bun.file(new URL("../rust/main.rs", import.meta.url)).text();
