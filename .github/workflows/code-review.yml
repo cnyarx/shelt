@@ -32,6 +32,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install Linux musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools binutils
 
       - name: Install dependencies
         timeout-minutes: 5
@@ -58,9 +62,17 @@ jobs:
       - name: Build standalone executable
         run: bun run compile
 
+      - name: Verify static Linux musl ABI
+        run: |
+          scripts/check-linux-musl.sh release/shelt-linux-x86_64-musl
+          cd release
+          sha256sum --check shelt-linux-x86_64-musl.sha256
+
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: shelt-linux-x86_64
-          path: release/shelt
+          name: shelt-linux-x86_64-musl
+          path: |
+            release/shelt-linux-x86_64-musl
+            release/shelt-linux-x86_64-musl.sha256
           if-no-files-found: error

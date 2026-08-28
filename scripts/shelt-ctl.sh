@@ -7,6 +7,7 @@ STATE_DIR=${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr/
 ENV_FILE="$CONFIG_DIR/.env"
 PID_FILE="$STATE_DIR/shelt.pid"
 LOG_FILE="$STATE_DIR/shelt.log"
+SHELT_BIN=${SHELT_BIN:-$ROOT/release/shelt-linux-x86_64-musl}
 
 mkdir -p "$CONFIG_DIR" "$STATE_DIR"
 chmod 700 "$CONFIG_DIR" "$STATE_DIR"
@@ -35,15 +36,15 @@ start() {
     echo "Shelt already running (PID $(cat "$PID_FILE"))"
     return
   fi
-  [[ -x "$ROOT/release/shelt" ]] || build
+  [[ -x "$SHELT_BIN" ]] || build
   export HERDR_PLUGIN_STATE_DIR="$STATE_DIR"
   export SHELT_STATE_DIR="$STATE_DIR"
-  "$ROOT/release/shelt" start
+  "$SHELT_BIN" start
 }
 
 stop() {
   export SHELT_STATE_DIR="$STATE_DIR"
-  "$ROOT/release/shelt" stop
+  "$SHELT_BIN" stop
 }
 
 url() {
@@ -55,7 +56,7 @@ case "${1:-}" in
   start) start ;;
   stop) stop ;;
   restart) stop; start ;;
-  status) export SHELT_STATE_DIR="$STATE_DIR"; "$ROOT/release/shelt" status ;;
+  status) export SHELT_STATE_DIR="$STATE_DIR"; "$SHELT_BIN" status ;;
   url) url ;;
   *) echo "usage: $0 {build|start|stop|restart|status|url}" >&2; exit 2 ;;
 esac

@@ -38,6 +38,11 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install Linux musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools binutils
 
       - name: Install dependencies
         timeout-minutes: 5
@@ -45,6 +50,12 @@ jobs:
 
       - name: Build standalone executable
         run: bun run compile
+
+      - name: Verify static Linux musl ABI
+        run: |
+          scripts/check-linux-musl.sh release/shelt-linux-x86_64-musl
+          cd release
+          sha256sum --check shelt-linux-x86_64-musl.sha256
 
       - name: Determine next version
         id: version
@@ -70,13 +81,6 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "tag=$next" >> "$GITHUB_OUTPUT"
 
-      - name: Package executable
-        if: steps.version.outputs.skip != 'true'
-        shell: bash
-        run: |
-          install -m 755 release/shelt shelt-linux-x86_64
-          sha256sum shelt-linux-x86_64 > shelt-linux-x86_64.sha256
-
       - name: Publish GitHub Release
         if: steps.version.outputs.skip != 'true'
         env:
@@ -85,8 +89,8 @@ jobs:
           RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           gh release create "$RELEASE_TAG" \
-            shelt-linux-x86_64 \
-            shelt-linux-x86_64.sha256 \
+            release/shelt-linux-x86_64-musl \
+            release/shelt-linux-x86_64-musl.sha256 \
             --target "$RELEASE_SHA" \
             --title "$RELEASE_TAG" \
             --generate-notes

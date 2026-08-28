@@ -11,6 +11,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "compile": "bun run build && bun run src/compile.ts",
+    "check:linux-musl": "scripts/check-linux-musl.sh release/shelt-linux-x86_64-musl && cd release && sha256sum --check shelt-linux-x86_64-musl.sha256",
     "rust:test": "$HOME/.cargo/bin/cargo test",
     "rust:check": "$HOME/.cargo/bin/cargo check"
   },

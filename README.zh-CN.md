@@ -30,11 +30,12 @@ Shelt 不会重新实现标签页、侧栏、输入框等业务界面。浏览�
 
 - Bun 1.3.14 或更高版本
 - Rust 1.95 或更高版本
-- Linux，用于构建独立可执行文件
+- 默认 Linux release 需要 Rust `x86_64-unknown-linux-musl` target 和 musl linker
 
 运行环境：
 
-- 编译完成后不依赖 Bun、Rust、`node_modules` 或源码目录
+- 编译完成后不依赖 Bun、Rust、`node_modules`、源码目录或目标机器的 glibc
+- 默认 `shelt-linux-x86_64-musl` 是静态 musl ELF，可运行在包括 glibc 2.17 在内的旧 glibc Linux 环境
 - Herdr 0.8.2 或更高版本为可选依赖，仅 Herdr 模式需要
 
 ## 构建
@@ -43,17 +44,26 @@ Shelt 不会重新实现标签页、侧栏、输入框等业务界面。浏览�
 git clone https://github.com/cnyarx/shelt.git
 cd shelt
 bun install --frozen-lockfile
+rustup target add x86_64-unknown-linux-musl
 bun run compile
+bun run check:linux-musl
 ```
 
-独立可执行文件生成在 `release/shelt`。
+默认构建生成：
+
+```text
+release/shelt-linux-x86_64-musl
+release/shelt-linux-x86_64-musl.sha256
+```
+
+`check:linux-musl` 会拒绝包含程序解释器、依赖 `libc.so.6` 或包含 `GLIBC_` 版本要求的可执行文件。若要构建非默认 Rust target，可执行 `bun run src/compile.ts --target <target-triple>` 或设置 `SHELT_RUST_TARGET`；产物命名为 `release/shelt-<target-triple>`。
 
 ## 使用
 
 以后台服务方式启动：
 
 ```bash
-./release/shelt
+./release/shelt-linux-x86_64-musl
 ```
 
 打开命令输出的地址，默认是：
@@ -65,13 +75,13 @@ http://127.0.0.1:8790
 服务管理命令：
 
 ```bash
-./release/shelt start
-./release/shelt stop
-./release/shelt restart
-./release/shelt status
-./release/shelt url
-./release/shelt logs
-./release/shelt foreground
+./release/shelt-linux-x86_64-musl start
+./release/shelt-linux-x86_64-musl stop
+./release/shelt-linux-x86_64-musl restart
+./release/shelt-linux-x86_64-musl status
+./release/shelt-linux-x86_64-musl url
+./release/shelt-linux-x86_64-musl logs
+./release/shelt-linux-x86_64-musl foreground
 ```
 
 从源码运行：
@@ -146,6 +156,7 @@ Shelt 提供完整的交互式终端能力，能够连接它的人也能控制�
 bun test
 bun run typecheck
 bun run compile
+bun run check:linux-musl
 $HOME/.cargo/bin/cargo test
 $HOME/.cargo/bin/cargo check
 ```
