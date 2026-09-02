@@ -44,5 +44,6 @@ export function compileTarget(root: string, target: string, cargoTargetDir?: str
 
 export function releaseNameForTarget(target: string): string {
   if (target === "x86_64-unknown-linux-musl") return "shelt-linux-x86_64-musl";
+  if (target === "aarch64-apple-darwin") return "shelt-macos-aarch64";
   return `shelt-${target}`;
 }

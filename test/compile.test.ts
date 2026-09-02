@@ -24,6 +24,7 @@ describe("standalone compile target", () => {
     expect(target.cargoExecutable).toBe(join("/project", "target", DEFAULT_RUST_TARGET, "release", "shelt"));
     expect(target.releaseName).toBe("shelt-linux-x86_64-musl");
     expect(target.checksumName).toBe("shelt-linux-x86_64-musl.sha256");
+    expect(releaseNameForTarget("aarch64-apple-darwin")).toBe("shelt-macos-aarch64");
     expect(releaseNameForTarget("aarch64-unknown-linux-musl")).toBe("shelt-aarch64-unknown-linux-musl");
   });
 
