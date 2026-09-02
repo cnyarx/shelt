@@ -30,11 +30,12 @@ Build requirements:
 
 - Bun 1.3.14 or newer
 - Rust 1.95 or newer
-- Linux for the standalone executable
+- The `x86_64-unknown-linux-musl` Rust target and a musl linker for the default Linux release
 
 Runtime requirements:
 
-- No Bun, Rust, `node_modules`, or source checkout is required after compilation
+- No Bun, Rust, `node_modules`, source checkout, or target-system glibc is required after compilation
+- The default `shelt-linux-x86_64-musl` release is a static musl ELF and is compatible with Linux systems that provide older glibc versions, including glibc 2.17 environments
 - Herdr 0.8.2 or newer is optional and only required for Herdr mode
 
 ## Build
@@ -43,17 +44,26 @@ Runtime requirements:
 git clone https://github.com/cnyarx/shelt.git
 cd shelt
 bun install --frozen-lockfile
+rustup target add x86_64-unknown-linux-musl
 bun run compile
+bun run check:linux-musl
 ```
 
-The self-contained executable is created at `release/shelt`.
+The default build creates:
+
+```text
+release/shelt-linux-x86_64-musl
+release/shelt-linux-x86_64-musl.sha256
+```
+
+`check:linux-musl` rejects executables with a program interpreter, a `libc.so.6` dependency, or `GLIBC_` version requirements. To build an explicit non-default Rust target, use `bun run src/compile.ts --target <target-triple>` or set `SHELT_RUST_TARGET`; its output is named `release/shelt-<target-triple>`.
 
 ## Usage
 
 Start Shelt as a background daemon:
 
 ```bash
-./release/shelt
+./release/shelt-linux-x86_64-musl
 ```
 
 Open the printed URL, which defaults to:
@@ -65,13 +75,13 @@ http://127.0.0.1:8790
 Lifecycle commands:
 
 ```bash
-./release/shelt start
-./release/shelt stop
-./release/shelt restart
-./release/shelt status
-./release/shelt url
-./release/shelt logs
-./release/shelt foreground
+./release/shelt-linux-x86_64-musl start
+./release/shelt-linux-x86_64-musl stop
+./release/shelt-linux-x86_64-musl restart
+./release/shelt-linux-x86_64-musl status
+./release/shelt-linux-x86_64-musl url
+./release/shelt-linux-x86_64-musl logs
+./release/shelt-linux-x86_64-musl foreground
 ```
 
 Run from source:
@@ -146,6 +156,7 @@ Shelt provides interactive terminal access. Anyone who can connect to it can con
 bun test
 bun run typecheck
 bun run compile
+bun run check:linux-musl
 $HOME/.cargo/bin/cargo test
 $HOME/.cargo/bin/cargo check
 ```
