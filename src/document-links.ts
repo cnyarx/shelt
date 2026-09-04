@@ -31,6 +31,8 @@ function addBareMatch(matches: DocumentPathMatch[], match: RegExpMatchArray): vo
   const raw = match[2]!;
   const start = match.index! + prefix.length;
   if (matches.some((existing) => start >= existing.start - 1 && start < existing.end + 1)) return;
+  const tokenPrefix = (match.input ?? "").slice(0, start).match(/[^\s"'`()[\]{}]+$/u)?.[0] ?? "";
+  if (tokenPrefix.includes("://")) return;
   const withoutLocation = raw.replace(LOCATION_SUFFIX, "");
   if (withoutLocation.includes("://")) return;
   matches.push({

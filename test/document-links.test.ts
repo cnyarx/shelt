@@ -66,6 +66,10 @@ describe("terminal document links", () => {
     expect(findDocumentPaths("docs/readme.md /tmp/report.pdf /tmp/script.js https://example.com/page.html")).toEqual([
       { path: "docs/readme.md", start: 0, end: 14 },
     ]);
+    expect(findDocumentPaths("http://localhost:6080/vnc.html")).toEqual([]);
+    expect(findDocumentPaths("open 6080/vnc.html")).toEqual([
+      { path: "6080/vnc.html", start: 5, end: 18 },
+    ]);
   });
 
   test("provides links when xterm marks the physical row as wrapped", async () => {
