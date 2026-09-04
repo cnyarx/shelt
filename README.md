@@ -18,6 +18,8 @@ Shelt exposes a real PTY in the browser through a single xterm.js surface. When 
 - Keyboard, mouse, resize, and text paste support over a real PTY
 - Clipboard image paste with `Ctrl+V` / `Cmd+V`: saves the image privately and inserts its absolute path
 - OSC 52 clipboard copy support with size and format validation
+- Clickable absolute paths for read-only Markdown, static HTML, SVG, and image previews
+- Lightweight Mermaid rendering in Markdown for flowcharts, sequence, class, state, and ER diagrams
 - One self-contained native executable with embedded browser assets
 - Background daemon lifecycle commands: `start`, `stop`, `restart`, `status`, `url`, and `logs`
 - Herdr plugin manifest included
@@ -31,11 +33,13 @@ Build requirements:
 - Bun 1.3.14 or newer
 - Rust 1.95 or newer
 - The `x86_64-unknown-linux-musl` Rust target and a musl linker for the default Linux release
+- macOS Apple Silicon builds require the `aarch64-apple-darwin` Rust target on an Apple Silicon Mac
 
 Runtime requirements:
 
-- No Bun, Rust, `node_modules`, source checkout, or target-system glibc is required after compilation
-- The default `shelt-linux-x86_64-musl` release is a static musl ELF and is compatible with Linux systems that provide older glibc versions, including glibc 2.17 environments
+- No Bun, Rust, `node_modules`, or source checkout is required after compilation
+- The default `shelt-linux-x86_64-musl` release is a static musl ELF and does not depend on the target system's glibc, including on glibc 2.17 environments
+- The `shelt-macos-aarch64` release runs natively on Apple Silicon Macs, including M4
 - Herdr 0.8.2 or newer is optional and only required for Herdr mode
 
 ## Build
@@ -56,7 +60,18 @@ release/shelt-linux-x86_64-musl
 release/shelt-linux-x86_64-musl.sha256
 ```
 
-`check:linux-musl` rejects executables with a program interpreter, a `libc.so.6` dependency, or `GLIBC_` version requirements. To build an explicit non-default Rust target, use `bun run src/compile.ts --target <target-triple>` or set `SHELT_RUST_TARGET`; its output is named `release/shelt-<target-triple>`.
+`check:linux-musl` rejects executables with a program interpreter, a `libc.so.6` dependency, or `GLIBC_` version requirements.
+
+On an Apple Silicon Mac, build the native macOS release with:
+
+```bash
+rustup target add aarch64-apple-darwin
+bun run build
+bun run src/compile.ts --target aarch64-apple-darwin
+cd release && shasum -a 256 --check shelt-macos-aarch64.sha256
+```
+
+This creates `release/shelt-macos-aarch64` and `release/shelt-macos-aarch64.sha256`. Other explicit Rust targets can be selected with `bun run src/compile.ts --target <target-triple>` or `SHELT_RUST_TARGET`; their output is named `release/shelt-<target-triple>`.
 
 ## Usage
 
@@ -64,6 +79,8 @@ Start Shelt as a background daemon:
 
 ```bash
 ./release/shelt-linux-x86_64-musl
+# Apple Silicon macOS:
+./release/shelt-macos-aarch64
 ```
 
 Open the printed URL, which defaults to:
@@ -119,12 +136,21 @@ SHELT_HOST=127.0.0.1
 SHELT_PORT=8790
 SHELT_PUBLIC_HOSTS=127.0.0.1:8790,localhost:8790
 SHELT_ALLOWED_ORIGINS=
+SHELT_PREVIEW_ROOTS=
 SHELT_UPLOAD_DIR=
 SHELT_STATE_DIR=
 SHELT_SECURE_COOKIE=false
 ```
 
 Only one browser controller is active at a time. A new controller disconnects the previous one so terminal size, mouse coordinates, and keyboard ownership remain unambiguous.
+
+## Read-only document preview
+
+Linux absolute paths ending in `.md`, `.markdown`, `.html`, `.htm`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp` become clickable in the terminal. Preview opens in a new browser tab and never provides editing or file-management controls. Quoted paths, escaped spaces, Unicode names, and optional `:line[:column]` or `#LxCy` suffixes are recognized. Relative terminal paths are intentionally not linked because the browser cannot reliably know the live shell working directory.
+
+Markdown supports common reading syntax, local relative images, and lightweight Mermaid previews for flowcharts, sequence diagrams, class diagrams, state diagrams, and ER diagrams. Unsupported Mermaid types fall back to their source code.
+
+Preview access reuses the Shelt login session. `SHELT_PREVIEW_ROOTS` is a colon-separated list of allowed directories and defaults to `$HOME`. Both roots and requested files are canonicalized, so `..` and symlinks cannot escape the allowlist. Markdown is limited to 2 MiB, HTML/SVG to 5 MiB, and images to 20 MiB. Raw Markdown HTML is escaped; static HTML and SVG run in a script-free sandbox with network requests, forms, and top-level navigation blocked.
 
 ## Password access
 

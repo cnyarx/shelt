@@ -18,6 +18,8 @@ Shelt 通过单一 xterm.js 界面在浏览器中提供真实 PTY。检测到 He
 - 支持键盘、鼠标、窗口缩放和文本粘贴
 - 支持通过 `Ctrl+V` / `Cmd+V` 粘贴图片：图片以私有权限保存，并将绝对路径插入终端
 - 支持经过大小和格式校验的 OSC 52 剪贴板复制
+- 终端中的绝对路径可点击，只读预览 Markdown、静态 HTML、SVG 和图片
+- Markdown 使用轻量 Mermaid 渲染，支持流程图、时序图、类图、状态图和 ER 图
 - 浏览器资源嵌入原生可执行文件，构建后可独立运行
 - 支持 `start`、`stop`、`restart`、`status`、`url`、`logs` 等后台服务命令
 - 仓库内置 Herdr 插件清单
@@ -31,11 +33,13 @@ Shelt 不会重新实现标签页、侧栏、输入框等业务界面。浏览�
 - Bun 1.3.14 或更高版本
 - Rust 1.95 或更高版本
 - 默认 Linux release 需要 Rust `x86_64-unknown-linux-musl` target 和 musl linker
+- macOS Apple Silicon 构建需要在 Apple Silicon Mac 上安装 Rust `aarch64-apple-darwin` target
 
 运行环境：
 
-- 编译完成后不依赖 Bun、Rust、`node_modules`、源码目录或目标机器的 glibc
-- 默认 `shelt-linux-x86_64-musl` 是静态 musl ELF，可运行在包括 glibc 2.17 在内的旧 glibc Linux 环境
+- 编译完成后不依赖 Bun、Rust、`node_modules` 或源码目录
+- 默认 `shelt-linux-x86_64-musl` 是静态 musl ELF，不依赖目标机器的 glibc，可运行在包括 glibc 2.17 在内的环境
+- `shelt-macos-aarch64` 可在包括 M4 在内的 Apple Silicon Mac 上原生运行
 - Herdr 0.8.2 或更高版本为可选依赖，仅 Herdr 模式需要
 
 ## 构建
@@ -56,7 +60,18 @@ release/shelt-linux-x86_64-musl
 release/shelt-linux-x86_64-musl.sha256
 ```
 
-`check:linux-musl` 会拒绝包含程序解释器、依赖 `libc.so.6` 或包含 `GLIBC_` 版本要求的可执行文件。若要构建非默认 Rust target，可执行 `bun run src/compile.ts --target <target-triple>` 或设置 `SHELT_RUST_TARGET`；产物命名为 `release/shelt-<target-triple>`。
+`check:linux-musl` 会拒绝包含程序解释器、依赖 `libc.so.6` 或包含 `GLIBC_` 版本要求的可执行文件。
+
+在 Apple Silicon Mac 上执行以下命令构建原生 macOS release：
+
+```bash
+rustup target add aarch64-apple-darwin
+bun run build
+bun run src/compile.ts --target aarch64-apple-darwin
+cd release && shasum -a 256 --check shelt-macos-aarch64.sha256
+```
+
+该构建生成 `release/shelt-macos-aarch64` 和 `release/shelt-macos-aarch64.sha256`。其他 Rust target 可通过 `bun run src/compile.ts --target <target-triple>` 或 `SHELT_RUST_TARGET` 指定，产物命名为 `release/shelt-<target-triple>`。
 
 ## 使用
 
@@ -64,6 +79,8 @@ release/shelt-linux-x86_64-musl.sha256
 
 ```bash
 ./release/shelt-linux-x86_64-musl
+# Apple Silicon macOS：
+./release/shelt-macos-aarch64
 ```
 
 打开命令输出的地址，默认是：
@@ -119,12 +136,21 @@ SHELT_HOST=127.0.0.1
 SHELT_PORT=8790
 SHELT_PUBLIC_HOSTS=127.0.0.1:8790,localhost:8790
 SHELT_ALLOWED_ORIGINS=
+SHELT_PREVIEW_ROOTS=
 SHELT_UPLOAD_DIR=
 SHELT_STATE_DIR=
 SHELT_SECURE_COOKIE=false
 ```
 
 同一时间只允许一个浏览器 controller。新连接会断开旧连接，避免终端尺寸、鼠标坐标和键盘控制权产生歧义。
+
+## 只读文档预览
+
+终端中以 `.md`、`.markdown`、`.html`、`.htm`、`.svg`、`.png`、`.jpg`、`.jpeg`、`.gif` 或 `.webp` 结尾的 Linux 绝对路径会自动变成可点击链接，并在新标签页中只读预览，不提供编辑或文件管理控件。支持引号包裹、转义空格、中文路径，以及可选的 `:line[:column]` 或 `#LxCy` 后缀。普通相对路径不会自动链接，因为浏览器无法可靠获知 Shell 实时工作目录。
+
+Markdown 支持常用阅读语法、本地相对图片，以及流程图、时序图、类图、状态图和 ER 图五类轻量 Mermaid 预览。不支持的 Mermaid 类型会回退显示原始代码。
+
+预览复用 Shelt 登录 Session。`SHELT_PREVIEW_ROOTS` 是以冒号分隔的允许目录列表，默认使用 `$HOME`。根目录和请求文件都会 canonicalize，因此 `..` 和 symlink 无法越过允许范围。Markdown、HTML/SVG、图片的大小上限分别为 2 MiB、5 MiB 和 20 MiB。Markdown 原始 HTML 会转义；静态 HTML 和 SVG 在禁用脚本、网络请求、表单和顶层导航的 sandbox 中展示。
 
 ## 密码访问
 
