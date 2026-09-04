@@ -2,6 +2,10 @@ html, body, #terminal { width: 100%; height: 100%; margin: 0; overflow: hidden; 
 body { overscroll-behavior: none; }
 [hidden] { display: none !important; }
 #terminal { box-sizing: border-box; padding: 0; }
+#terminal.document-link-hover, #terminal.document-link-hover .xterm-screen { cursor: pointer !important; }
+.document-link-indicators { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.document-link-indicators span { position: absolute; box-sizing: border-box; border-bottom: 2px solid transparent; cursor: pointer; pointer-events: auto; }
+.document-link-indicators span:hover { border-bottom-color: #31bafd; }
 .xterm, .xterm-viewport, .xterm-screen { height: 100%; }
 #auth { min-height: 100%; display: grid; place-items: center; box-sizing: border-box; padding: 24px; color: #edf8ff; background: radial-gradient(circle at 50% 25%, #123349 0, #07141d 42%, #02070a 100%); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
 #auth-form { width: min(360px, 100%); box-sizing: border-box; padding: 30px; border: 1px solid #1d4f69; border-radius: 20px; background: rgba(5, 19, 27, .92); box-shadow: 0 24px 80px rgba(0, 0, 0, .45); }

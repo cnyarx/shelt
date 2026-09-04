@@ -31,10 +31,16 @@ use std::{
 use tokio::sync::{mpsc, oneshot};
 
 const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_MARKDOWN_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_DOCUMENT_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_PREVIEW_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const INDEX_HTML: &[u8] = include_bytes!("../dist/index.html");
 const STYLE_CSS: &[u8] = include_bytes!("../dist/style.css");
 const CLIENT_CSS: &[u8] = include_bytes!("../dist/client.css");
 const CLIENT_JS: &[u8] = include_bytes!("../dist/client.js");
+const PREVIEW_HTML: &[u8] = include_bytes!("../dist/preview.html");
+const PREVIEW_CSS: &[u8] = include_bytes!("../dist/preview.css");
+const PREVIEW_JS: &[u8] = include_bytes!("../dist/preview.js");
 const FAVICON_PNG: &[u8] = include_bytes!("../dist/favicon.png");
 const FAVICON_16_PNG: &[u8] = include_bytes!("../dist/favicon-16.png");
 const FAVICON_32_PNG: &[u8] = include_bytes!("../dist/favicon-32.png");
@@ -59,6 +65,7 @@ struct AppState {
     public_hosts: Arc<HashSet<String>>,
     allowed_origins: Arc<HashSet<String>>,
     upload_dir: PathBuf,
+    preview_roots: Arc<Vec<PathBuf>>,
     uploaded_paths: Arc<Mutex<HashSet<PathBuf>>>,
     active: Arc<Mutex<Option<ActiveSession>>>,
     auth: AuthStore,
@@ -76,6 +83,26 @@ struct AuthRequest {
     password: String,
     #[serde(default)]
     remember: bool,
+}
+
+#[derive(Deserialize)]
+struct PreviewQuery {
+    path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WikiLinkQuery {
+    document_path: String,
+    target: String,
+    heading: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PreviewType {
+    kind: &'static str,
+    content_type: &'static str,
+    max_bytes: u64,
 }
 
 #[derive(Deserialize)]
@@ -257,6 +284,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         });
     fs::create_dir_all(&upload_dir)?;
     fs::set_permissions(&upload_dir, fs::Permissions::from_mode(0o700))?;
+    let preview_roots = preview_roots()?;
     let auth = AuthStore::load(
         state_dir().join("auth.json"),
         env::var("SHELT_SECURE_COOKIE").as_deref() == Ok("true"),
@@ -278,6 +306,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
                 .collect(),
         ),
         upload_dir,
+        preview_roots: Arc::new(preview_roots),
         uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
         active: Arc::new(Mutex::new(None)),
         auth,
@@ -299,6 +328,8 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             "/api/upload",
             post(upload_handler).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
         )
+        .route("/api/preview", get(preview_handler))
+        .route("/api/resolve-wikilink", get(resolve_wikilink_handler))
         .route("/health", get(health_handler))
         .fallback(static_handler)
         .with_state(state.clone());
@@ -449,6 +480,109 @@ async fn health_handler(State(state): State<AppState>, headers: HeaderMap) -> Re
     secure(Json(Health { ok: true }).into_response())
 }
 
+async fn preview_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<PreviewQuery>,
+) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let requested = Path::new(&query.path);
+    if !requested.is_absolute() {
+        return secure((StatusCode::BAD_REQUEST, "Absolute path required").into_response());
+    }
+    let Some(preview_type) = preview_type(requested) else {
+        return secure(
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Unsupported preview type",
+            )
+                .into_response(),
+        );
+    };
+    let canonical = match fs::canonicalize(requested) {
+        Ok(path) => path,
+        Err(_) => return secure((StatusCode::NOT_FOUND, "Not found").into_response()),
+    };
+    if !within_preview_root(&canonical, &state.preview_roots) {
+        return secure((StatusCode::FORBIDDEN, "Path is outside preview roots").into_response());
+    }
+    let metadata = match fs::metadata(&canonical) {
+        Ok(metadata) => metadata,
+        Err(_) => return secure((StatusCode::NOT_FOUND, "Not found").into_response()),
+    };
+    if !metadata.is_file() {
+        return secure((StatusCode::UNSUPPORTED_MEDIA_TYPE, "Not a regular file").into_response());
+    }
+    if metadata.len() > preview_type.max_bytes {
+        return secure(
+            (StatusCode::PAYLOAD_TOO_LARGE, "Preview file is too large").into_response(),
+        );
+    }
+    match fs::read(canonical) {
+        Ok(bytes) => preview_secure(bytes.into_response(), preview_type),
+        Err(_) => secure((StatusCode::NOT_FOUND, "Unable to read file").into_response()),
+    }
+}
+
+async fn resolve_wikilink_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<WikiLinkQuery>,
+) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let document = match fs::canonicalize(&query.document_path) {
+        Ok(path) => path,
+        Err(_) => {
+            return secure((StatusCode::NOT_FOUND, "Source document not found").into_response())
+        }
+    };
+    if !within_preview_root(&document, &state.preview_roots)
+        || preview_type(&document).is_none_or(|value| value.kind != "markdown")
+        || !fs::metadata(&document).is_ok_and(|metadata| metadata.is_file())
+    {
+        return secure((StatusCode::FORBIDDEN, "Invalid source document").into_response());
+    }
+    for candidate in wiki_link_candidates(&document, &query.target, &state.preview_roots) {
+        let Ok(target) = fs::canonicalize(candidate) else {
+            continue;
+        };
+        if !within_preview_root(&target, &state.preview_roots)
+            || preview_type(&target).is_none_or(|value| value.kind != "markdown")
+            || !fs::metadata(&target).is_ok_and(|metadata| metadata.is_file())
+        {
+            continue;
+        }
+        let mut location = format!(
+            "/preview?path={}",
+            percent_encode(target.to_string_lossy().as_bytes())
+        );
+        if let Some(heading) = query.heading.filter(|value| !value.is_empty()) {
+            location.push('#');
+            location.push_str(&percent_encode(heading.as_bytes()));
+        }
+        let mut response = StatusCode::FOUND.into_response();
+        response.headers_mut().insert(
+            header::LOCATION,
+            HeaderValue::from_str(&location).expect("encoded redirect location"),
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        return secure(response);
+    }
+    secure((StatusCode::NOT_FOUND, "Wiki link not found").into_response())
+}
+
 async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: Uri) -> Response {
     if !allowed_host(&state, &headers) {
         return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
@@ -458,6 +592,9 @@ async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: 
         "/style.css" => (STYLE_CSS, "text/css; charset=utf-8"),
         "/client.css" => (CLIENT_CSS, "text/css; charset=utf-8"),
         "/client.js" => (CLIENT_JS, "text/javascript; charset=utf-8"),
+        "/preview" | "/preview.html" => (PREVIEW_HTML, "text/html; charset=utf-8"),
+        "/preview.css" => (PREVIEW_CSS, "text/css; charset=utf-8"),
+        "/preview.js" => (PREVIEW_JS, "text/javascript; charset=utf-8"),
         "/favicon.png" => (FAVICON_PNG, "image/png"),
         "/favicon-16.png" => (FAVICON_16_PNG, "image/png"),
         "/favicon-32.png" => (FAVICON_32_PNG, "image/png"),
@@ -699,6 +836,29 @@ fn cookie_header(headers: &HeaderMap) -> Option<&str> {
 fn authenticated(state: &AppState, headers: &HeaderMap) -> bool {
     state.auth.authenticated(cookie_header(headers))
 }
+fn preview_secure(mut response: Response, preview_type: PreviewType) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(preview_type.content_type),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("inline"),
+    );
+    headers.insert(
+        "x-shelt-preview-kind",
+        HeaderValue::from_static(preview_type.kind),
+    );
+    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"));
+    headers.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    response
+}
 fn secure(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert("content-security-policy", HeaderValue::from_static("default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"));
@@ -749,6 +909,106 @@ fn image_extension(content_type: &str) -> Option<&'static str> {
         "image/bmp" => Some("bmp"),
         _ => None,
     }
+}
+fn preview_roots() -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let configured = env::var_os("SHELT_PREVIEW_ROOTS")
+        .map(|value| env::split_paths(&value).collect::<Vec<_>>())
+        .filter(|roots| !roots.is_empty())
+        .unwrap_or_else(|| env::var_os("HOME").map(PathBuf::from).into_iter().collect());
+    configured
+        .into_iter()
+        .map(fs::canonicalize)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(Into::into)
+}
+fn preview_type(path: &Path) -> Option<PreviewType> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
+        "md" | "markdown" => Some(PreviewType {
+            kind: "markdown",
+            content_type: "text/markdown; charset=utf-8",
+            max_bytes: MAX_MARKDOWN_BYTES,
+        }),
+        "html" | "htm" => Some(PreviewType {
+            kind: "html",
+            content_type: "text/html; charset=utf-8",
+            max_bytes: MAX_DOCUMENT_BYTES,
+        }),
+        "svg" => Some(PreviewType {
+            kind: "svg",
+            content_type: "image/svg+xml; charset=utf-8",
+            max_bytes: MAX_DOCUMENT_BYTES,
+        }),
+        "png" => Some(PreviewType {
+            kind: "image",
+            content_type: "image/png",
+            max_bytes: MAX_PREVIEW_IMAGE_BYTES,
+        }),
+        "jpg" | "jpeg" => Some(PreviewType {
+            kind: "image",
+            content_type: "image/jpeg",
+            max_bytes: MAX_PREVIEW_IMAGE_BYTES,
+        }),
+        "gif" => Some(PreviewType {
+            kind: "image",
+            content_type: "image/gif",
+            max_bytes: MAX_PREVIEW_IMAGE_BYTES,
+        }),
+        "webp" => Some(PreviewType {
+            kind: "image",
+            content_type: "image/webp",
+            max_bytes: MAX_PREVIEW_IMAGE_BYTES,
+        }),
+        _ => None,
+    }
+}
+fn within_preview_root(path: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root))
+}
+fn wiki_link_candidates(document: &Path, target: &str, roots: &[PathBuf]) -> Vec<PathBuf> {
+    if target.is_empty()
+        || Path::new(target).is_absolute()
+        || target
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return vec![];
+    }
+    let extensions: &[&str] = if target.to_ascii_lowercase().ends_with(".md")
+        || target.to_ascii_lowercase().ends_with(".markdown")
+    {
+        &[""]
+    } else {
+        &[".md", ".markdown"]
+    };
+    let mut candidates = vec![];
+    let Some(mut directory) = document.parent() else {
+        return candidates;
+    };
+    while within_preview_root(directory, roots) {
+        for extension in extensions {
+            candidates.push(directory.join(format!("{target}{extension}")));
+        }
+        let Some(parent) = directory.parent() else {
+            break;
+        };
+        if parent == directory {
+            break;
+        }
+        directory = parent;
+    }
+    candidates
+}
+fn percent_encode(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len());
+    for byte in bytes {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(*byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
 }
 fn has_image_signature(bytes: &[u8], extension: &str) -> bool {
     match extension {
@@ -937,6 +1197,7 @@ mod tests {
             public_hosts: Arc::new(HashSet::new()),
             allowed_origins: Arc::new(HashSet::from(["https://proxy.example".into()])),
             upload_dir: PathBuf::new(),
+            preview_roots: Arc::new(vec![PathBuf::from("/home/user")]),
             uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
             active: Arc::new(Mutex::new(None)),
             auth: AuthStore::load(
@@ -966,6 +1227,54 @@ mod tests {
             HeaderValue::from_static("https://evil.example"),
         );
         assert!(!allowed_origin(&state, &headers));
+    }
+
+    #[test]
+    fn preview_types_and_roots_are_bounded() {
+        assert_eq!(
+            preview_type(Path::new("/tmp/README.MD")),
+            Some(PreviewType {
+                kind: "markdown",
+                content_type: "text/markdown; charset=utf-8",
+                max_bytes: MAX_MARKDOWN_BYTES,
+            })
+        );
+        assert_eq!(
+            preview_type(Path::new("/tmp/photo.jpeg")).map(|value| value.max_bytes),
+            Some(MAX_PREVIEW_IMAGE_BYTES)
+        );
+        assert_eq!(preview_type(Path::new("/tmp/report.pdf")), None);
+        assert!(within_preview_root(
+            Path::new("/home/user/docs/readme.md"),
+            &[PathBuf::from("/home/user")]
+        ));
+        assert!(!within_preview_root(
+            Path::new("/home/user-other/readme.md"),
+            &[PathBuf::from("/home/user")]
+        ));
+        assert_eq!(
+            wiki_link_candidates(
+                Path::new("/home/user/vault/计算机学/长上下文.md"),
+                "物理学/弦理论",
+                &[PathBuf::from("/home/user/vault")],
+            ),
+            vec![
+                PathBuf::from("/home/user/vault/计算机学/物理学/弦理论.md"),
+                PathBuf::from("/home/user/vault/计算机学/物理学/弦理论.markdown"),
+                PathBuf::from("/home/user/vault/物理学/弦理论.md"),
+                PathBuf::from("/home/user/vault/物理学/弦理论.markdown"),
+            ]
+        );
+        assert!(wiki_link_candidates(
+            Path::new("/home/user/vault/readme.md"),
+            "../secret",
+            &[PathBuf::from("/home/user/vault")],
+        )
+        .is_empty());
+        assert_eq!(
+            percent_encode("/路径 a.md".as_bytes()),
+            "%2F%E8%B7%AF%E5%BE%84%20a.md"
+        );
     }
 
     #[test]

@@ -1,0 +1,42 @@
+:root { color: #24292f; background: #fff; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; }
+body { overflow-wrap: break-word; }
+#preview { min-height: 100vh; }
+.markdown-body { width: min(980px, calc(100% - 48px)); margin: 0 auto; padding: 40px 0 80px; }
+.markdown-body h1, .markdown-body h2 { padding-bottom: .3em; border-bottom: 1px solid #d8dee4; }
+.markdown-body h1 { font-size: 2em; }
+.markdown-body h2 { margin-top: 1.5em; font-size: 1.5em; }
+.markdown-body h3 { margin-top: 1.4em; }
+.markdown-body a { color: #0969da; }
+.markdown-body .wikilink { color: #7c3aed; text-decoration: none; }
+.markdown-body .wikilink:hover { text-decoration: underline; }
+.markdown-body blockquote { margin: 0; padding: 0 1em; color: #57606a; border-left: .25em solid #d0d7de; }
+.markdown-body code { padding: .2em .4em; border-radius: 6px; background: #f6f8fa; font: 85% ui-monospace, SFMono-Regular, Consolas, monospace; }
+.markdown-body pre { overflow: auto; padding: 16px; border-radius: 6px; background: #f6f8fa; }
+.markdown-body pre code { padding: 0; background: transparent; font-size: 100%; }
+.markdown-body img, .markdown-body svg { display: block; max-width: 100%; height: auto; margin: 20px auto; }
+.markdown-body table { width: 100%; border-collapse: collapse; }
+.markdown-body th, .markdown-body td { padding: 6px 13px; border: 1px solid #d0d7de; }
+.markdown-body tr:nth-child(2n) { background: #f6f8fa; }
+.table-wrap { overflow-x: auto; }
+.katex { font-family: "Times New Roman", STIXGeneral, serif; }
+.katex math[display="block"] { display: block; overflow-x: auto; margin: 1.2em 0; padding: .2em 0; font-size: 1.2em; }
+.katex math:not([display="block"]) { font-size: 1.08em; }
+.math-error { color: #cf222e; }
+.mermaid { overflow-x: auto; margin: 24px 0; padding: 16px; border: 1px solid #d8dee4; border-radius: 8px; }
+.mermaid figcaption { margin-top: 12px; color: #cf222e; font-size: 13px; }
+.native-preview { display: grid; min-height: 100vh; place-items: center; background: #202124; }
+.native-preview > img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+.native-preview > iframe { width: 100%; height: 100vh; border: 0; background: #fff; }
+.preview-error { display: grid; min-height: 100vh; place-items: center; padding: 32px; color: #cf222e; text-align: center; }
+@media (prefers-color-scheme: dark) {
+  :root { color: #e6edf3; background: #0d1117; }
+  .markdown-body h1, .markdown-body h2 { border-color: #30363d; }
+  .markdown-body a { color: #58a6ff; }
+  .markdown-body .wikilink { color: #a78bfa; }
+  .markdown-body blockquote { color: #8b949e; border-color: #3b434b; }
+  .markdown-body code, .markdown-body pre, .markdown-body tr:nth-child(2n) { background: #161b22; }
+  .markdown-body th, .markdown-body td, .mermaid { border-color: #30363d; }
+  .mermaid { background: #fff; color: #24292f; }
+}

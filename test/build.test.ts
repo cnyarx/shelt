@@ -22,4 +22,18 @@ describe("production bundle", () => {
     expect(await Bun.file(join(root, "dist/favicon-32.png")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/favicon-64.png")).exists()).toBe(true);
   });
+
+  test("ships preview assets without loading Mermaid in the terminal bundle", async () => {
+    const html = await readFile(join(root, "dist/preview.html"), "utf8");
+    const client = await readFile(join(root, "dist/client.js"), "utf8");
+    const preview = await readFile(join(root, "dist/preview.js"), "utf8");
+    expect(html).toContain('id="preview"');
+    expect(html).toContain('src="/preview.js"');
+    expect(await Bun.file(join(root, "dist/preview.css")).exists()).toBe(true);
+    expect(preview.length).toBeGreaterThan(100_000);
+    expect(client).not.toContain("Mermaid preview unavailable");
+    expect(client).not.toContain('output:"mathml"');
+    expect(preview).toContain("Mermaid preview unavailable");
+    expect(preview).toContain('output:"mathml"');
+  });
 });

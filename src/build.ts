@@ -7,7 +7,7 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
 const result = await Bun.build({
-  entrypoints: [join(root, "src/client.ts")],
+  entrypoints: [join(root, "src/client.ts"), join(root, "src/preview.ts")],
   outdir: dist,
   target: "browser",
   minify: true,
@@ -19,6 +19,8 @@ if (!result.success) {
 }
 await cp(join(root, "public/index.html"), join(dist, "index.html"));
 await cp(join(root, "public/style.css"), join(dist, "style.css"));
+await cp(join(root, "public/preview.html"), join(dist, "preview.html"));
+await cp(join(root, "public/preview.css"), join(dist, "preview.css"));
 for (const favicon of ["favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]) {
   await cp(join(root, "public", favicon), join(dist, favicon));
 }

@@ -6,6 +6,11 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { createSemanticAnsiState, normalizeSemanticAnsiChunk, resetSemanticAnsiState } from "./ansi.ts";
 import { decodeOsc52 } from "./clipboard.ts";
+import {
+  createDocumentLinkIndicatorLayer,
+  createDocumentLinkProvider,
+  registerDocumentLinkMouseActivation,
+} from "./document-links.ts";
 import { uploadFileNameHeader } from "./security.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -210,6 +215,9 @@ function startTerminal() {
     hover: (_event, url) => { mount.title = url; },
     leave: () => { mount.removeAttribute("title"); },
   }));
+  terminal.registerLinkProvider(createDocumentLinkProvider(terminal, mount, openLink));
+  registerDocumentLinkMouseActivation(terminal, mount, openLink);
+  createDocumentLinkIndicatorLayer(terminal, mount);
   terminal.parser.registerOscHandler(52, async (data) => {
     const clipboard = decodeOsc52(data);
     if (!clipboard.ok) {

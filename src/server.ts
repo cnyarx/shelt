@@ -1,5 +1,5 @@
-import { chmod, mkdir, open, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { chmod, mkdir, open, readFile, realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   AuthStore,
   MAX_AUTH_BODY_BYTES,
@@ -9,6 +9,7 @@ import {
 } from "./auth.ts";
 import { embeddedAssets } from "./generated-assets.ts";
 import { loginShellFromPasswd, resolveLaunch } from "./launch.ts";
+import { previewRoots, previewType, wikiLinkCandidates, withinPreviewRoot } from "./preview-security.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -23,6 +24,9 @@ const root = resolve(import.meta.dir, "..");
 const dist = join(root, "dist");
 const host = process.env.SHELT_HOST || "127.0.0.1";
 const port = Number(process.env.SHELT_PORT || "8790");
+const canonicalPreviewRoots = await Promise.all(
+  previewRoots(process.env.SHELT_PREVIEW_ROOTS, process.env.HOME).map((path) => realpath(path)),
+);
 const stateDir = resolve(
   process.env.SHELT_STATE_DIR || join(process.env.XDG_STATE_HOME || join(process.env.HOME || ".", ".local/state"), "shelt"),
 );
@@ -97,9 +101,77 @@ function authenticated(req: Request): boolean {
   return auth.authenticated(req.headers.get("cookie"));
 }
 
+function previewResponse(body: BodyInit | null, contentType: string, kind: string): Response {
+  return response(body, 200, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "Content-Disposition": "inline",
+    "X-Shelt-Preview-Kind": kind,
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+  });
+}
+
+async function previewFile(path: string | null): Promise<Response> {
+  if (!path || !isAbsolute(path)) return response("Absolute path required", 400);
+  const type = previewType(path);
+  if (!type) return response("Unsupported preview type", 415);
+
+  let canonicalPath: string;
+  try {
+    canonicalPath = await realpath(path);
+  } catch (cause) {
+    return response((cause as NodeJS.ErrnoException).code === "ENOENT" ? "Not found" : "Unable to resolve path", 404);
+  }
+  if (!withinPreviewRoot(canonicalPath, canonicalPreviewRoots)) return response("Path is outside preview roots", 403);
+
+  let metadata;
+  try {
+    metadata = await stat(canonicalPath);
+  } catch {
+    return response("Not found", 404);
+  }
+  if (!metadata.isFile()) return response("Not a regular file", 415);
+  if (metadata.size > type.maxBytes) return response("Preview file is too large", 413);
+
+  try {
+    return previewResponse(await readFile(canonicalPath), type.contentType, type.kind);
+  } catch {
+    return response("Unable to read file", 404);
+  }
+}
+
+async function resolveWikiLink(documentPath: string | null, target: string | null, heading: string | null): Promise<Response> {
+  if (!documentPath || !target || !isAbsolute(documentPath)) return response("Invalid wiki link", 400);
+  let canonicalDocument: string;
+  try {
+    canonicalDocument = await realpath(documentPath);
+  } catch {
+    return response("Source document not found", 404);
+  }
+  if (!withinPreviewRoot(canonicalDocument, canonicalPreviewRoots) || previewType(canonicalDocument)?.kind !== "markdown") {
+    return response("Invalid source document", 403);
+  }
+  try {
+    if (!(await stat(canonicalDocument)).isFile()) return response("Invalid source document", 403);
+  } catch {
+    return response("Source document not found", 404);
+  }
+  for (const candidate of wikiLinkCandidates(canonicalDocument, target, canonicalPreviewRoots)) {
+    try {
+      const canonicalTarget = await realpath(candidate);
+      if (!withinPreviewRoot(canonicalTarget, canonicalPreviewRoots) || previewType(canonicalTarget)?.kind !== "markdown") continue;
+      if (!(await stat(canonicalTarget)).isFile()) continue;
+      const query = new URLSearchParams({ path: canonicalTarget });
+      const location = `/preview?${query.toString()}${heading ? `#${encodeURIComponent(heading)}` : ""}`;
+      return response(null, 302, { Location: location, "Cache-Control": "no-store" });
+    } catch {}
+  }
+  return response("Wiki link not found", 404);
+}
+
 async function staticFile(pathname: string): Promise<Response> {
-  const file = pathname === "/" ? "index.html" : pathname.slice(1);
-  if (!new Set(["index.html", "style.css", "client.css", "client.js", "favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]).has(file)) return response("Not found", 404);
+  const file = pathname === "/" ? "index.html" : pathname === "/preview" ? "preview.html" : pathname.slice(1);
+  if (!new Set(["index.html", "style.css", "client.css", "client.js", "preview.html", "preview.css", "preview.js", "favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]).has(file)) return response("Not found", 404);
   const type = file.endsWith(".html")
     ? "text/html; charset=utf-8"
     : file.endsWith(".css")
@@ -174,6 +246,20 @@ const server = Bun.serve<SessionData>({
       const rows = Math.min(500, Math.max(1, Number.parseInt(url.searchParams.get("rows") || "40", 10) || 40));
       if (!server.upgrade(req, { data: { terminal: null, process: null, cols, rows } })) return response("Upgrade failed", 400);
       return;
+    }
+
+    if (url.pathname === "/api/preview" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      return previewFile(url.searchParams.get("path"));
+    }
+
+    if (url.pathname === "/api/resolve-wikilink" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      return resolveWikiLink(
+        url.searchParams.get("documentPath"),
+        url.searchParams.get("target"),
+        url.searchParams.get("heading"),
+      );
     }
 
     if (url.pathname === "/api/upload" && req.method === "POST") {
