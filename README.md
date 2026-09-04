@@ -146,7 +146,7 @@ Only one browser controller is active at a time. A new controller disconnects th
 
 ## Read-only document preview
 
-Linux absolute paths ending in `.md`, `.markdown`, `.html`, `.htm`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp` become clickable in the terminal. Preview opens in a new browser tab and never provides editing or file-management controls. Quoted paths, escaped spaces, Unicode names, and optional `:line[:column]` or `#LxCy` suffixes are recognized. Relative terminal paths are intentionally not linked because the browser cannot reliably know the live shell working directory.
+Linux paths ending in `.md`, `.markdown`, `.html`, `.htm`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp` become clickable in the terminal. Preview opens in a new browser tab and never provides editing or file-management controls. Quoted paths, escaped spaces, Unicode names, and optional `:line[:column]` or `#LxCy` suffixes are recognized. In Herdr mode, relative paths are resolved at click time against the focused pane's `foreground_cwd`; shell mode supports absolute paths only.
 
 Markdown supports common reading syntax, local relative images, and lightweight Mermaid previews for flowcharts, sequence diagrams, class diagrams, state diagrams, and ER diagrams. Unsupported Mermaid types fall back to their source code.
 

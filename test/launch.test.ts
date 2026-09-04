@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { loginShellFromPasswd, resolveLaunch } from "../src/launch.ts";
+import {
+  herdrPaneCwd,
+  herdrPaneEnvironment,
+  loginShellFromPasswd,
+  resolveLaunch,
+} from "../src/launch.ts";
 
 const bins = new Map([
   ["herdr", "/usr/bin/herdr"],
@@ -40,6 +45,29 @@ describe("launch mode", () => {
   test("forced Herdr and invalid modes fail clearly", () => {
     expect(() => resolveLaunch({ env: { SHELT_MODE: "herdr" }, which: () => null })).toThrow(/not found/);
     expect(() => resolveLaunch({ env: { SHELT_MODE: "other" }, which })).toThrow(/Invalid SHELT_MODE/);
+  });
+});
+
+describe("Herdr focused pane", () => {
+  test("removes caller pane identity from the query environment", () => {
+    expect(herdrPaneEnvironment({
+      HOME: "/home/user",
+      HERDR_PANE_ID: "wA:p1",
+      HERDR_WORKSPACE_ID: "wA",
+      HERDR_TAB_ID: "wA:t1",
+      HERDR_CWD: "/tmp",
+    })).toEqual({ HOME: "/home/user" });
+  });
+
+  test("prefers foreground_cwd and validates absolute paths", () => {
+    expect(herdrPaneCwd(JSON.stringify({
+      result: { pane: { cwd: "/home/user", foreground_cwd: "/home/user/project" } },
+    }))).toBe("/home/user/project");
+    expect(herdrPaneCwd(JSON.stringify({
+      result: { pane: { cwd: "/home/user", foreground_cwd: null } },
+    }))).toBe("/home/user");
+    expect(herdrPaneCwd('{"result":{"pane":{"cwd":"relative"}}}')).toBeNull();
+    expect(herdrPaneCwd("not json")).toBeNull();
   });
 });
 

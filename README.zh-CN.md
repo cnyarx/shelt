@@ -146,7 +146,7 @@ SHELT_SECURE_COOKIE=false
 
 ## 只读文档预览
 
-终端中以 `.md`、`.markdown`、`.html`、`.htm`、`.svg`、`.png`、`.jpg`、`.jpeg`、`.gif` 或 `.webp` 结尾的 Linux 绝对路径会自动变成可点击链接，并在新标签页中只读预览，不提供编辑或文件管理控件。支持引号包裹、转义空格、中文路径，以及可选的 `:line[:column]` 或 `#LxCy` 后缀。普通相对路径不会自动链接，因为浏览器无法可靠获知 Shell 实时工作目录。
+终端中以 `.md`、`.markdown`、`.html`、`.htm`、`.svg`、`.png`、`.jpg`、`.jpeg`、`.gif` 或 `.webp` 结尾的 Linux 路径会自动变成可点击链接，并在新标签页中只读预览，不提供编辑或文件管理控件。支持引号包裹、转义空格、中文路径，以及可选的 `:line[:column]` 或 `#LxCy` 后缀。在 Herdr 模式下，相对路径会在点击时基于当前聚焦 pane 的 `foreground_cwd` 解析；shell 模式仅支持绝对路径。
 
 Markdown 支持常用阅读语法、本地相对图片，以及流程图、时序图、类图、状态图和 ER 图五类轻量 Mermaid 预览。不支持的 Mermaid 类型会回退显示原始代码。
 

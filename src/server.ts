@@ -8,7 +8,12 @@ import {
   sessionCookie,
 } from "./auth.ts";
 import { embeddedAssets } from "./generated-assets.ts";
-import { loginShellFromPasswd, resolveLaunch } from "./launch.ts";
+import {
+  herdrPaneCwd,
+  herdrPaneEnvironment,
+  loginShellFromPasswd,
+  resolveLaunch,
+} from "./launch.ts";
 import { previewRoots, previewType, wikiLinkCandidates, withinPreviewRoot } from "./preview-security.ts";
 import {
   MAX_IMAGE_BYTES,
@@ -140,6 +145,51 @@ async function previewFile(path: string | null): Promise<Response> {
   }
 }
 
+async function focusedPaneCwd(): Promise<string | null> {
+  if (launch.mode !== "herdr") return null;
+  const child = Bun.spawn([launch.command, "pane", "current"], {
+    env: herdrPaneEnvironment(process.env),
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const timeout = setTimeout(() => child.kill(), 2000);
+  try {
+    const [exitCode, output] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+    ]);
+    return exitCode === 0 ? herdrPaneCwd(output) : null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveTerminalPath(path: string | null): Promise<Response> {
+  if (!path || isAbsolute(path) || path.includes("\0") || !previewType(path)) {
+    return response("Supported relative path required", 400);
+  }
+  const cwd = await focusedPaneCwd();
+  if (!cwd) return response("Unable to query the focused Herdr pane", 503);
+
+  let canonicalTarget: string;
+  try {
+    canonicalTarget = await realpath(join(cwd, path));
+  } catch {
+    return response("Not found", 404);
+  }
+  if (!withinPreviewRoot(canonicalTarget, canonicalPreviewRoots)) {
+    return response("Path is outside preview roots", 403);
+  }
+  if (!previewType(canonicalTarget)) return response("Invalid preview target", 415);
+  try {
+    if (!(await stat(canonicalTarget)).isFile()) return response("Invalid preview target", 415);
+  } catch {
+    return response("Not found", 404);
+  }
+  const query = new URLSearchParams({ path: canonicalTarget });
+  return response(null, 302, { Location: `/preview?${query.toString()}`, "Cache-Control": "no-store" });
+}
+
 async function resolveWikiLink(documentPath: string | null, target: string | null, heading: string | null): Promise<Response> {
   if (!documentPath || !target || !isAbsolute(documentPath)) return response("Invalid wiki link", 400);
   let canonicalDocument: string;
@@ -251,6 +301,11 @@ const server = Bun.serve<SessionData>({
     if (url.pathname === "/api/preview" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);
       return previewFile(url.searchParams.get("path"));
+    }
+
+    if (url.pathname === "/api/resolve-terminal-path" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      return resolveTerminalPath(url.searchParams.get("path"));
     }
 
     if (url.pathname === "/api/resolve-wikilink" && req.method === "GET") {

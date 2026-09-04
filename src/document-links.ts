@@ -1,9 +1,10 @@
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 
 const EXTENSIONS = "(?:md|markdown|html?|svg|png|jpe?g|gif|webp)";
-const QUOTED_PATH = new RegExp(`(["'\\x60])(/(?:\\\\.|(?!\\1).)+?\\.${EXTENSIONS})(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?\\1`, "giu");
-const BARE_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?:\\\\.|[^\\s"'\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)`, "giu");
-const SPACED_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?:\\\\.|[^"\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)$`, "giu");
+const PATH_START = "(?:/(?!/)|\\.{1,2}/|[^\\s/\"'\\x60:=\\uff1a\\uff0c\\u3001\\u2500-\\u257f()\\[\\]{}]+/)";
+const QUOTED_PATH = new RegExp(`(["'\\x60])(${PATH_START}(?:\\\\.|(?!\\1).)+?\\.${EXTENSIONS})(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?\\1`, "giu");
+const BARE_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001\\u2500-\\u257f])(${PATH_START}(?:\\\\.|[^\\s"'\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)`, "giu");
+const SPACED_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?!/)(?:\\\\.|[^"\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)$`, "giu");
 const LOCATION_SUFFIX = /(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/i;
 
 export type DocumentPathMatch = { path: string; start: number; end: number };
@@ -31,6 +32,7 @@ function addBareMatch(matches: DocumentPathMatch[], match: RegExpMatchArray): vo
   const start = match.index! + prefix.length;
   if (matches.some((existing) => start >= existing.start - 1 && start < existing.end + 1)) return;
   const withoutLocation = raw.replace(LOCATION_SUFFIX, "");
+  if (withoutLocation.includes("://")) return;
   matches.push({
     path: unescapeShellPath(withoutLocation),
     start,
@@ -39,7 +41,8 @@ function addBareMatch(matches: DocumentPathMatch[], match: RegExpMatchArray): vo
 }
 
 export function previewUrl(path: string): string {
-  return `/preview?path=${encodeURIComponent(path)}`;
+  const endpoint = path.startsWith("/") ? "/preview" : "/api/resolve-terminal-path";
+  return `${endpoint}?path=${encodeURIComponent(path)}`;
 }
 
 function unescapeShellPath(path: string): string {

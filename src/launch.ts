@@ -1,6 +1,13 @@
 export type LaunchMode = "auto" | "herdr" | "shell";
 export type LaunchTarget = { mode: "herdr" | "shell"; command: string; args: string[] };
 
+const HERDR_PANE_ENVIRONMENT = [
+  "HERDR_PANE_ID",
+  "HERDR_WORKSPACE_ID",
+  "HERDR_TAB_ID",
+  "HERDR_CWD",
+] as const;
+
 type ResolveOptions = {
   env: Record<string, string | undefined>;
   which: (command: string) => string | null;
@@ -45,6 +52,32 @@ function resolveShell(
 function resolveCommand(command: string, which: (command: string) => string | null): string | null {
   if (command.includes("\0") || command.includes("\n") || command.includes("\r")) return null;
   return which(command);
+}
+
+export function herdrPaneEnvironment(
+  environment: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const result = { ...environment };
+  for (const key of HERDR_PANE_ENVIRONMENT) delete result[key];
+  return result;
+}
+
+export function herdrPaneCwd(output: string): string | null {
+  let response: unknown;
+  try {
+    response = JSON.parse(output);
+  } catch {
+    return null;
+  }
+  if (!response || typeof response !== "object" || !("result" in response)) return null;
+  const result = response.result;
+  if (!result || typeof result !== "object" || !("pane" in result)) return null;
+  const pane = result.pane;
+  if (!pane || typeof pane !== "object") return null;
+  const foregroundCwd = "foreground_cwd" in pane ? pane.foreground_cwd : null;
+  const cwd = "cwd" in pane ? pane.cwd : null;
+  const selected = typeof foregroundCwd === "string" && foregroundCwd ? foregroundCwd : cwd;
+  return typeof selected === "string" && selected.startsWith("/") ? selected : null;
 }
 
 export function loginShellFromPasswd(passwd: string, uid: number): string | null {

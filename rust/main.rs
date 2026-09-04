@@ -28,7 +28,10 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    process::Command as TokioCommand,
+    sync::{mpsc, oneshot},
+};
 
 const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_MARKDOWN_BYTES: u64 = 2 * 1024 * 1024;
@@ -88,6 +91,22 @@ struct AuthRequest {
 #[derive(Deserialize)]
 struct PreviewQuery {
     path: String,
+}
+
+#[derive(Deserialize)]
+struct HerdrPaneCurrentResponse {
+    result: HerdrPaneCurrentResult,
+}
+
+#[derive(Deserialize)]
+struct HerdrPaneCurrentResult {
+    pane: HerdrPane,
+}
+
+#[derive(Deserialize)]
+struct HerdrPane {
+    foreground_cwd: Option<PathBuf>,
+    cwd: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -329,6 +348,10 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             post(upload_handler).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
         )
         .route("/api/preview", get(preview_handler))
+        .route(
+            "/api/resolve-terminal-path",
+            get(resolve_terminal_path_handler),
+        )
         .route("/api/resolve-wikilink", get(resolve_wikilink_handler))
         .route("/health", get(health_handler))
         .fallback(static_handler)
@@ -527,6 +550,97 @@ async fn preview_handler(
         Ok(bytes) => preview_secure(bytes.into_response(), preview_type),
         Err(_) => secure((StatusCode::NOT_FOUND, "Unable to read file").into_response()),
     }
+}
+
+async fn resolve_terminal_path_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<PreviewQuery>,
+) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let relative = Path::new(&query.path);
+    if relative.is_absolute() || query.path.contains('\0') || preview_type(relative).is_none() {
+        return secure(
+            (StatusCode::BAD_REQUEST, "Supported relative path required").into_response(),
+        );
+    }
+    let cwd = match focused_pane_cwd(&state.launch).await {
+        Ok(path) => path,
+        Err(message) => return secure((StatusCode::SERVICE_UNAVAILABLE, message).into_response()),
+    };
+    let target = match fs::canonicalize(cwd.join(relative)) {
+        Ok(path) => path,
+        Err(_) => return secure((StatusCode::NOT_FOUND, "Not found").into_response()),
+    };
+    if !within_preview_root(&target, &state.preview_roots) {
+        return secure((StatusCode::FORBIDDEN, "Path is outside preview roots").into_response());
+    }
+    if preview_type(&target).is_none()
+        || !fs::metadata(&target).is_ok_and(|metadata| metadata.is_file())
+    {
+        return secure(
+            (StatusCode::UNSUPPORTED_MEDIA_TYPE, "Invalid preview target").into_response(),
+        );
+    }
+    redirect_to_preview(&target)
+}
+
+async fn focused_pane_cwd(launch: &LaunchTarget) -> Result<PathBuf, &'static str> {
+    if launch.mode != "herdr" {
+        return Err("Relative terminal paths require Herdr mode");
+    }
+    let mut command = TokioCommand::new(&launch.command);
+    command
+        .arg("pane")
+        .arg("current")
+        .env_remove("HERDR_PANE_ID")
+        .env_remove("HERDR_WORKSPACE_ID")
+        .env_remove("HERDR_TAB_ID")
+        .env_remove("HERDR_CWD")
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(2), command.output())
+        .await
+        .map_err(|_| "Timed out reading the focused Herdr pane")?
+        .map_err(|_| "Unable to query the focused Herdr pane")?;
+    if !output.status.success() {
+        return Err("Unable to query the focused Herdr pane");
+    }
+    let cwd = parse_herdr_pane_cwd(&output.stdout)?;
+    if !cwd.is_absolute() {
+        return Err("Focused Herdr pane returned an invalid working directory");
+    }
+    Ok(cwd)
+}
+
+fn parse_herdr_pane_cwd(output: &[u8]) -> Result<PathBuf, &'static str> {
+    let response: HerdrPaneCurrentResponse = serde_json::from_slice(output)
+        .map_err(|_| "Invalid response from the focused Herdr pane")?;
+    Ok(response
+        .result
+        .pane
+        .foreground_cwd
+        .unwrap_or(response.result.pane.cwd))
+}
+
+fn redirect_to_preview(path: &Path) -> Response {
+    let location = format!(
+        "/preview?path={}",
+        percent_encode(path.to_string_lossy().as_bytes())
+    );
+    let mut response = StatusCode::FOUND.into_response();
+    response.headers_mut().insert(
+        header::LOCATION,
+        HeaderValue::from_str(&location).expect("encoded redirect location"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    secure(response)
 }
 
 async fn resolve_wikilink_handler(
@@ -1275,6 +1389,23 @@ mod tests {
             percent_encode("/路径 a.md".as_bytes()),
             "%2F%E8%B7%AF%E5%BE%84%20a.md"
         );
+    }
+
+    #[test]
+    fn herdr_pane_cwd_prefers_foreground_and_falls_back_to_creation_cwd() {
+        assert_eq!(
+            parse_herdr_pane_cwd(
+                br#"{"result":{"pane":{"cwd":"/home/user","foreground_cwd":"/home/user/project"}}}"#,
+            ),
+            Ok(PathBuf::from("/home/user/project"))
+        );
+        assert_eq!(
+            parse_herdr_pane_cwd(
+                br#"{"result":{"pane":{"cwd":"/home/user","foreground_cwd":null}}}"#,
+            ),
+            Ok(PathBuf::from("/home/user"))
+        );
+        assert!(parse_herdr_pane_cwd(b"not json").is_err());
     }
 
     #[test]

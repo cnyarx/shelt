@@ -49,8 +49,23 @@ describe("terminal document links", () => {
     );
   });
 
-  test("rejects relative and unsupported paths", () => {
-    expect(findDocumentPaths("docs/readme.md /tmp/report.pdf /tmp/script.js")).toEqual([]);
+  test("finds relative paths while rejecting unsupported paths and URLs", () => {
+    expect(findDocumentPaths(
+      "handoffs/HANDOFF_M4_MACOS_RELEASE.md handoffs/HANDOFF_DocumentLinks.md",
+    )).toEqual([
+      { path: "handoffs/HANDOFF_M4_MACOS_RELEASE.md", start: 0, end: 36 },
+      { path: "handoffs/HANDOFF_DocumentLinks.md", start: 37, end: 70 },
+    ]);
+    expect(findDocumentPaths("│handoffs/HANDOFF_DocumentLinks.md")).toEqual([
+      { path: "handoffs/HANDOFF_DocumentLinks.md", start: 1, end: 34 },
+    ]);
+    expect(findDocumentPaths("./docs/readme.md ../images/diagram.png").map(({ path }) => path)).toEqual([
+      "./docs/readme.md",
+      "../images/diagram.png",
+    ]);
+    expect(findDocumentPaths("docs/readme.md /tmp/report.pdf /tmp/script.js https://example.com/page.html")).toEqual([
+      { path: "docs/readme.md", start: 0, end: 14 },
+    ]);
   });
 
   test("provides links when xterm marks the physical row as wrapped", async () => {
@@ -211,12 +226,15 @@ describe("terminal document links", () => {
     expect(opened).toHaveLength(1);
   });
 
-  test("creates a same-origin encoded preview URL without dropping path components", () => {
+  test("creates same-origin encoded preview and resolver URLs without dropping path components", () => {
     expect(previewUrl("/home/user/设计 文档.md")).toBe(
       "/preview?path=%2Fhome%2Fuser%2F%E8%AE%BE%E8%AE%A1%20%E6%96%87%E6%A1%A3.md",
     );
     expect(previewUrl("/home/admin/github/cnyarx/xian/为什么标准超弦理论要求十维.md")).toBe(
       "/preview?path=%2Fhome%2Fadmin%2Fgithub%2Fcnyarx%2Fxian%2F%E4%B8%BA%E4%BB%80%E4%B9%88%E6%A0%87%E5%87%86%E8%B6%85%E5%BC%A6%E7%90%86%E8%AE%BA%E8%A6%81%E6%B1%82%E5%8D%81%E7%BB%B4.md",
+    );
+    expect(previewUrl("handoffs/HANDOFF_DocumentLinks.md")).toBe(
+      "/api/resolve-terminal-path?path=handoffs%2FHANDOFF_DocumentLinks.md",
     );
   });
 });
