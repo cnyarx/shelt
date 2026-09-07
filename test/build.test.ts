@@ -21,6 +21,9 @@ describe("production bundle", () => {
     expect(await Bun.file(join(root, "dist/favicon-16.png")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/favicon-32.png")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/favicon-64.png")).exists()).toBe(true);
+    const styles = await readFile(join(root, "dist/style.css"), "utf8");
+    expect(styles).toContain(".document-link-indicators span { position: absolute; box-sizing: border-box; border-bottom: 2px solid #31bafd;");
+    expect(styles).not.toContain("border-bottom: 2px solid transparent");
   });
 
   test("ships preview assets without loading Mermaid in the terminal bundle", async () => {

@@ -12,6 +12,23 @@ describe("Markdown preview", () => {
     expect(rendered.html).not.toContain("<script>");
   });
 
+  test("preserves nested list indentation and valid list item structure", () => {
+    const rendered = renderMarkdown([
+      "1. Enable inspection",
+      "   - `devicePixelRatio`",
+      "   - `#auth.hidden`",
+      "     1. nested ordered check",
+      "2. Click the path",
+    ].join("\n"), "/home/user/readme.md");
+    expect(rendered.html).toBe([
+      "<ol><li>Enable inspection<ul>",
+      "<li><code>devicePixelRatio</code></li>",
+      "<li><code>#auth.hidden</code><ol><li>nested ordered check</li></ol></li>",
+      "</ul></li><li>Click the path</li></ol>",
+    ].join(""));
+    expect(rendered.html).not.toMatch(/<\/(?:ul|ol)>\s*<p>/);
+  });
+
   test("rewrites local relative images through the controlled API", () => {
     expect(localImagePreviewUrl("../images/架构 图.png", "/home/user/docs/readme.md")).toBe(
       "/api/preview?path=%2Fhome%2Fuser%2Fimages%2F%E6%9E%B6%E6%9E%84%20%E5%9B%BE.png",

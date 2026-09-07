@@ -11,7 +11,6 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
   const mermaid: Array<{ id: string; source: string }> = [];
   const headingIds = new Map<string, number>();
   let paragraph: string[] = [];
-  let list: "ul" | "ol" | null = null;
   let index = 0;
 
   const closeParagraph = () => {
@@ -19,14 +18,8 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
     output.push(`<p>${renderInline(paragraph.join(" "), documentPath)}</p>`);
     paragraph = [];
   };
-  const closeList = () => {
-    if (!list) return;
-    output.push(`</${list}>`);
-    list = null;
-  };
   const closeBlocks = () => {
     closeParagraph();
-    closeList();
   };
 
   while (index < lines.length) {
@@ -116,18 +109,16 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
       output.push(`<div class="table-wrap"><table><thead><tr>${headers.map((cell) => `<th>${renderInline(cell, documentPath)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInline(cell, documentPath)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
       continue;
     }
-    const unordered = line.match(/^\s*[-+*]\s+(.+)$/);
-    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    const unordered = line.match(/^(\s*)[-+*]\s+(.+)$/);
+    const ordered = line.match(/^(\s*)\d+[.)]\s+(.+)$/);
     if (unordered || ordered) {
       closeParagraph();
-      const nextList = unordered ? "ul" : "ol";
-      if (list !== nextList) {
-        closeList();
-        list = nextList;
-        output.push(`<${list}>`);
-      }
-      output.push(`<li>${renderInline((unordered ?? ordered)![1]!, documentPath)}</li>`);
-      index += 1;
+      const match = unordered ?? ordered!;
+      const indent = match[1]!.length;
+      const tag = unordered ? "ul" : "ol";
+      const result = parseList(lines, index, indent, tag, documentPath);
+      output.push(result.html);
+      index = result.nextIndex;
       continue;
     }
     if (!line.trim()) {
@@ -140,6 +131,59 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
   }
   closeBlocks();
   return { html: output.join("\n"), mermaid };
+}
+
+type ListTag = "ul" | "ol";
+type ListLine = { indent: number; tag: ListTag; content: string };
+
+function parseList(
+  lines: string[],
+  startIndex: number,
+  indent: number,
+  tag: ListTag,
+  documentPath: string,
+): { html: string; nextIndex: number } {
+  const items: string[] = [];
+  let index = startIndex;
+
+  while (index < lines.length) {
+    const item = listLine(lines[index]!);
+    if (!item || item.indent !== indent || item.tag !== tag) break;
+    index += 1;
+
+    const content = [item.content];
+    const children: string[] = [];
+    while (index < lines.length) {
+      const next = listLine(lines[index]!);
+      if (next && next.indent > indent) {
+        const nested = parseList(lines, index, next.indent, next.tag, documentPath);
+        children.push(nested.html);
+        index = nested.nextIndex;
+        continue;
+      }
+      if (next || !lines[index]!.trim()) break;
+      const leading = lines[index]!.match(/^\s*/)?.[0].length ?? 0;
+      if (leading <= indent) break;
+      content.push(lines[index]!.trim());
+      index += 1;
+    }
+
+    items.push(`<li>${renderInline(content.join(" "), documentPath)}${children.join("")}</li>`);
+
+    let nextIndex = index;
+    while (nextIndex < lines.length && !lines[nextIndex]!.trim()) nextIndex += 1;
+    const next = listLine(lines[nextIndex] ?? "");
+    if (next?.indent === indent && next.tag === tag) index = nextIndex;
+  }
+
+  return { html: `<${tag}>${items.join("")}</${tag}>`, nextIndex: index };
+}
+
+function listLine(line: string): ListLine | null {
+  const unordered = line.match(/^(\s*)[-+*]\s+(.+)$/);
+  if (unordered) return { indent: unordered[1]!.length, tag: "ul", content: unordered[2]! };
+  const ordered = line.match(/^(\s*)\d+[.)]\s+(.+)$/);
+  return ordered ? { indent: ordered[1]!.length, tag: "ol", content: ordered[2]! } : null;
 }
 
 export function localImagePreviewUrl(source: string, documentPath: string): string | null {

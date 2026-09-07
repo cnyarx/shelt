@@ -12,8 +12,11 @@ body { overflow-wrap: break-word; }
 .markdown-body .wikilink { color: #7c3aed; text-decoration: none; }
 .markdown-body .wikilink:hover { text-decoration: underline; }
 .markdown-body blockquote { margin: 0; padding: 0 1em; color: #57606a; border-left: .25em solid #d0d7de; }
+.markdown-body ul, .markdown-body ol { margin: 0 0 1em; padding-left: 2em; }
+.markdown-body li + li { margin-top: .25em; }
+.markdown-body li > ul, .markdown-body li > ol { margin: .25em 0 0; }
 .markdown-body code { padding: .2em .4em; border-radius: 6px; background: #f6f8fa; font: 85% ui-monospace, SFMono-Regular, Consolas, monospace; }
-.markdown-body pre { overflow: auto; padding: 16px; border-radius: 6px; background: #f6f8fa; }
+.markdown-body pre { overflow: auto; margin: 0 0 1em; padding: 16px; border-radius: 6px; background: #f6f8fa; tab-size: 4; }
 .markdown-body pre code { padding: 0; background: transparent; font-size: 100%; }
 .markdown-body img, .markdown-body svg { display: block; max-width: 100%; height: auto; margin: 20px auto; }
 .markdown-body table { width: 100%; border-collapse: collapse; }
