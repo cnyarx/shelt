@@ -1,4 +1,5 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
@@ -23,5 +24,10 @@ await cp(join(root, "public/preview.html"), join(dist, "preview.html"));
 await cp(join(root, "public/preview.css"), join(dist, "preview.css"));
 for (const favicon of ["favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]) {
   await cp(join(root, "public", favicon), join(dist, favicon));
+}
+for (const js of ["client.js", "preview.js"]) {
+  const raw = await readFile(join(dist, js));
+  const gz = gzipSync(raw, { level: 9 });
+  await writeFile(join(dist, `${js}.gz`), gz);
 }
 console.log("Built Shelt web client");

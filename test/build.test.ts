@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
@@ -23,6 +24,11 @@ describe("production bundle", () => {
     expect(await Bun.file(join(root, "dist/favicon-64.png")).exists()).toBe(true);
     const styles = await readFile(join(root, "dist/style.css"), "utf8");
     expect(styles).toContain(".document-link-indicators span { position: absolute; box-sizing: border-box; border-bottom: 2px solid #31bafd;");
+    expect(styles).toContain("@media (hover: none) and (pointer: coarse)");
+    expect(styles).toContain("height: var(--shelt-viewport-height, 100%);");
+    expect(styles).toContain("top: var(--shelt-viewport-top, 0);");
+    expect(styles).toContain("touch-action: pinch-zoom;");
+    expect(styles).not.toContain("touch-action: none;");
     expect(styles).not.toContain("border-bottom: 2px solid transparent");
   });
 
@@ -32,7 +38,23 @@ describe("production bundle", () => {
     const client = await readFile(join(root, "dist/client.js"), "utf8");
     const preview = await readFile(join(root, "dist/preview.js"), "utf8");
     expect(html).toContain('id="preview"');
+    expect(html).toContain('id="tts-toolbar" class="tts-toolbar collapsed"');
+    expect(html).toContain('id="tts-toggle"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('id="tts-controls"');
+    expect(html).toContain('id="tts-start"');
+    expect(html).toContain('id="tts-target"');
+    expect(html).not.toContain('id="tts-mode"');
+    expect(html).not.toContain('value="local"');
+    expect(html).not.toContain('id="tts-play-here"');
     expect(html).toContain('src="/preview.js"');
+    expect(styles).toContain(".tts-toolbar { position: fixed;");
+    expect(styles).toContain(".tts-toolbar.collapsed { padding: 0;");
+    expect(styles).toContain(".tts-toolbar.collapsed .tts-controls { display: none;");
+    expect(styles).toContain(".tts-toolbar .tts-toggle { display: grid;");
+    expect(styles).toContain("backdrop-filter: blur(18px) saturate(150%);");
+    expect(styles).not.toContain(".tts-play-here");
+    expect(styles).toContain(".tts-speaking {");
     expect(styles).toContain(".markdown-body { width: min(1600px, calc(100% - 48px));");
     expect(styles).toContain("overflow-wrap: break-word;");
     expect(styles).toContain(".table-wrap { max-width: 100%; overflow-x: auto; }");
@@ -42,7 +64,25 @@ describe("production bundle", () => {
     expect(preview.length).toBeGreaterThan(100_000);
     expect(client).not.toContain("Mermaid preview unavailable");
     expect(client).not.toContain('output:"mathml"');
+    expect(client).toContain('addEventListener("touchstart"');
+    expect(client).toContain('addEventListener("touchmove"');
+    expect(client).toContain('new WheelEvent("wheel"');
+    expect(client).toContain("visualViewport");
+    expect(client).toContain("--shelt-viewport-height");
+    expect(client).toContain('type:"resize"');
+    expect(client).not.toContain("previousSocket");
     expect(preview).toContain("Mermaid preview unavailable");
     expect(preview).toContain('output:"mathml"');
+    expect(preview).toContain('fetch("/api/tts"');
+    expect(preview).toContain("fetchTtsAudio");
+    expect(preview).toContain("setExpanded");
+    expect(preview).toContain("收起语音朗读工具栏");
+    expect(preview).not.toContain("shelt-tts-mode");
+    expect(preview).not.toContain("speechSynthesis");
+    expect(preview).not.toContain("正在使用本地系统语音朗读");
+    expect(preview).toContain("图片预览未启用 OCR 识别");
+    expect(preview).toContain("allow-same-origin");
+    expect(gunzipSync(await readFile(join(root, "dist/client.js.gz"))).toString()).toBe(client);
+    expect(gunzipSync(await readFile(join(root, "dist/preview.js.gz"))).toString()).toBe(preview);
   });
 });

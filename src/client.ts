@@ -4,13 +4,15 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { createSemanticAnsiState, normalizeSemanticAnsiChunk, resetSemanticAnsiState } from "./ansi.ts";
+import { createSemanticAnsiState, normalizeSemanticAnsiChunk } from "./ansi.ts";
 import { decodeOsc52 } from "./clipboard.ts";
 import {
   createDocumentLinkIndicatorLayer,
   createDocumentLinkProvider,
   registerDocumentLinkMouseActivation,
 } from "./document-links.ts";
+import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
+import { installVisibleViewportSizing } from "./mobile-viewport.ts";
 import { uploadFileNameHeader } from "./security.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -153,13 +155,8 @@ function scheduleResize() {
     if (!terminal || !fit) return;
     const finalDimensions = fit.proposeDimensions();
     if (!finalDimensions || (finalDimensions.cols === terminal.cols && finalDimensions.rows === terminal.rows)) return;
-    const previousSocket = socket;
-    socket = undefined;
-    previousSocket?.close();
     fit.fit();
-    resetSemanticAnsiState(semanticAnsi);
-    terminal.reset();
-    connect();
+    send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
   }, 150);
 }
 
@@ -210,6 +207,7 @@ function startTerminal() {
   terminal.loadAddon(unicode11);
   terminal.unicode.activeVersion = "11";
   terminal.open(mount);
+  installTerminalTouchScrolling(mount);
   terminal.loadAddon(new CanvasAddon());
   terminal.loadAddon(new WebLinksAddon((_event, url) => openLink(url), {
     hover: (_event, url) => { mount.title = url; },
@@ -282,6 +280,8 @@ document.addEventListener("paste", (event) => {
 window.addEventListener("focus", () => {
   if (!mount.hidden) terminal?.focus();
 });
+
+installVisibleViewportSizing(scheduleResize);
 
 void authStatus().then((status) => {
   if (status.authenticated) startTerminal();
