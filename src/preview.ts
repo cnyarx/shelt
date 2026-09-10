@@ -1,5 +1,6 @@
 import { renderMermaid } from "@vercel/beautiful-mermaid";
 import { escapeHtml, renderMarkdown } from "./markdown.ts";
+import { PreviewTtsController } from "./tts.ts";
 
 function requiredElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -8,6 +9,7 @@ function requiredElement(id: string): HTMLElement {
 }
 
 const mount = requiredElement("preview");
+const tts = new PreviewTtsController();
 const path = new URL(location.href).searchParams.get("path");
 if (!path || !path.startsWith("/")) {
   showError("Absolute preview path required.");
@@ -52,6 +54,7 @@ async function load(path: string): Promise<void> {
         figure.insertAdjacentHTML("beforeend", `<figcaption>Mermaid preview unavailable: ${escapeHtml(message)}</figcaption>`);
       }
     }));
+    tts.setDocument(mount);
     return;
   }
   if (kind === "image") {
@@ -60,15 +63,23 @@ async function load(path: string): Promise<void> {
     image.src = apiUrl;
     image.alt = path.split("/").pop() || "Image preview";
     mount.replaceChildren(image);
+    tts.setDocument(null, undefined, "图片预览未启用 OCR 识别");
     return;
   }
   if (kind === "html" || kind === "svg") {
     mount.className = "native-preview";
     const frame = document.createElement("iframe");
     frame.src = apiUrl;
-    frame.sandbox.value = "";
+    frame.sandbox.value = "allow-same-origin";
     frame.title = path.split("/").pop() || "Document preview";
     mount.replaceChildren(frame);
+    frame.addEventListener("load", () => {
+      try {
+        tts.setDocument(frame.contentDocument, frame);
+      } catch {
+        tts.setDocument(null, undefined, "此预览没有可朗读内容");
+      }
+    });
     return;
   }
   showError("Unsupported preview response.");

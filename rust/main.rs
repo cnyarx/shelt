@@ -1,4 +1,5 @@
 mod auth;
+mod edge_tts;
 
 use auth::{password_error, AuthStore, MAX_AUTH_BODY_BYTES};
 use axum::{
@@ -34,16 +35,19 @@ use tokio::{
 };
 
 const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_TTS_BODY_BYTES: usize = 8 * 1024;
+const MAX_TTS_TEXT_CHARS: usize = 1000;
+const TTS_TIMEOUT: Duration = Duration::from_secs(45);
 const MAX_MARKDOWN_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_PREVIEW_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const INDEX_HTML: &[u8] = include_bytes!("../dist/index.html");
 const STYLE_CSS: &[u8] = include_bytes!("../dist/style.css");
 const CLIENT_CSS: &[u8] = include_bytes!("../dist/client.css");
-const CLIENT_JS: &[u8] = include_bytes!("../dist/client.js");
+const CLIENT_JS_GZ: &[u8] = include_bytes!("../dist/client.js.gz");
 const PREVIEW_HTML: &[u8] = include_bytes!("../dist/preview.html");
 const PREVIEW_CSS: &[u8] = include_bytes!("../dist/preview.css");
-const PREVIEW_JS: &[u8] = include_bytes!("../dist/preview.js");
+const PREVIEW_JS_GZ: &[u8] = include_bytes!("../dist/preview.js.gz");
 const FAVICON_PNG: &[u8] = include_bytes!("../dist/favicon.png");
 const FAVICON_16_PNG: &[u8] = include_bytes!("../dist/favicon-16.png");
 const FAVICON_32_PNG: &[u8] = include_bytes!("../dist/favicon-32.png");
@@ -86,6 +90,55 @@ struct AuthRequest {
     password: String,
     #[serde(default)]
     remember: bool,
+}
+
+#[derive(Deserialize)]
+struct TtsRequest {
+    text: String,
+    voice: String,
+    rate: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TtsVoice {
+    name: &'static str,
+}
+
+impl TtsVoice {
+    fn valid(name: &str) -> bool {
+        VALID_VOICES.iter().any(|v| v.name == name)
+    }
+}
+
+const VALID_VOICES: &[TtsVoice] = &[
+    TtsVoice {
+        name: "zh-CN-XiaoxiaoNeural",
+    },
+    TtsVoice {
+        name: "zh-CN-YunxiNeural",
+    },
+    TtsVoice {
+        name: "zh-CN-XiaoyiNeural",
+    },
+    TtsVoice {
+        name: "en-US-EmmaMultilingualNeural",
+    },
+];
+
+fn valid_tts_rate(rate: f32) -> bool {
+    (0.5..=2.0).contains(&rate)
+}
+
+fn tts_rate_percent(rate: f32) -> i32 {
+    ((rate - 1.0) * 100.0).round() as i32
+}
+
+fn escape_tts_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 #[derive(Deserialize)]
@@ -349,6 +402,10 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/preview", get(preview_handler))
         .route(
+            "/api/tts",
+            post(tts_handler).layer(DefaultBodyLimit::max(MAX_TTS_BODY_BYTES)),
+        )
+        .route(
             "/api/resolve-terminal-path",
             get(resolve_terminal_path_handler),
         )
@@ -501,6 +558,60 @@ async fn health_handler(State(state): State<AppState>, headers: HeaderMap) -> Re
         return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
     }
     secure(Json(Health { ok: true }).into_response())
+}
+
+async fn tts_handler(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let Ok(request) = serde_json::from_slice::<TtsRequest>(&body) else {
+        return secure((StatusCode::BAD_REQUEST, "Invalid TTS request").into_response());
+    };
+    let text = request.text.trim();
+    if text.is_empty() || !TtsVoice::valid(&request.voice) || !valid_tts_rate(request.rate) {
+        return secure((StatusCode::BAD_REQUEST, "Invalid TTS request").into_response());
+    }
+    if text.chars().count() > MAX_TTS_TEXT_CHARS {
+        return secure((StatusCode::PAYLOAD_TOO_LARGE, "TTS text is too long").into_response());
+    }
+    let voice = VALID_VOICES
+        .iter()
+        .find(|voice| voice.name == request.voice)
+        .unwrap();
+    let escaped_text = escape_tts_text(text);
+    let synthesis = tokio::time::timeout(
+        TTS_TIMEOUT,
+        edge_tts::synthesize(&escaped_text, voice.name, tts_rate_percent(request.rate)),
+    )
+    .await;
+    let audio = match synthesis {
+        Ok(Ok(audio)) => audio,
+        Ok(Err(error)) => {
+            eprintln!("TTS synthesis failed: {error}");
+            return secure((StatusCode::BAD_GATEWAY, "TTS service unavailable").into_response());
+        }
+        Err(_) => {
+            eprintln!("TTS synthesis timed out");
+            return secure((StatusCode::GATEWAY_TIMEOUT, "TTS service timed out").into_response());
+        }
+    };
+    if audio.is_empty() {
+        return secure((StatusCode::BAD_GATEWAY, "TTS service returned no audio").into_response());
+    }
+    let mut response = audio.into_response();
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("audio/mpeg"));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    secure(response)
 }
 
 async fn preview_handler(
@@ -701,24 +812,34 @@ async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: 
     if !allowed_host(&state, &headers) {
         return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
     }
-    let (bytes, content_type) = match uri.path() {
-        "/" | "/index.html" => (INDEX_HTML, "text/html; charset=utf-8"),
-        "/style.css" => (STYLE_CSS, "text/css; charset=utf-8"),
-        "/client.css" => (CLIENT_CSS, "text/css; charset=utf-8"),
-        "/client.js" => (CLIENT_JS, "text/javascript; charset=utf-8"),
-        "/preview" | "/preview.html" => (PREVIEW_HTML, "text/html; charset=utf-8"),
-        "/preview.css" => (PREVIEW_CSS, "text/css; charset=utf-8"),
-        "/preview.js" => (PREVIEW_JS, "text/javascript; charset=utf-8"),
-        "/favicon.png" => (FAVICON_PNG, "image/png"),
-        "/favicon-16.png" => (FAVICON_16_PNG, "image/png"),
-        "/favicon-32.png" => (FAVICON_32_PNG, "image/png"),
-        "/favicon-64.png" => (FAVICON_64_PNG, "image/png"),
+    let (bytes, content_type, content_encoding) = match uri.path() {
+        "/" | "/index.html" => (INDEX_HTML, "text/html; charset=utf-8", None),
+        "/style.css" => (STYLE_CSS, "text/css; charset=utf-8", None),
+        "/client.css" => (CLIENT_CSS, "text/css; charset=utf-8", None),
+        "/client.js" => (CLIENT_JS_GZ, "text/javascript; charset=utf-8", Some("gzip")),
+        "/preview" | "/preview.html" => (PREVIEW_HTML, "text/html; charset=utf-8", None),
+        "/preview.css" => (PREVIEW_CSS, "text/css; charset=utf-8", None),
+        "/preview.js" => (
+            PREVIEW_JS_GZ,
+            "text/javascript; charset=utf-8",
+            Some("gzip"),
+        ),
+        "/favicon.png" => (FAVICON_PNG, "image/png", None),
+        "/favicon-16.png" => (FAVICON_16_PNG, "image/png", None),
+        "/favicon-32.png" => (FAVICON_32_PNG, "image/png", None),
+        "/favicon-64.png" => (FAVICON_64_PNG, "image/png", None),
         _ => return secure((StatusCode::NOT_FOUND, "Not found").into_response()),
     };
     let mut response = bytes.to_vec().into_response();
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    if let Some(content_encoding) = content_encoding {
+        response.headers_mut().insert(
+            header::CONTENT_ENCODING,
+            HeaderValue::from_static(content_encoding),
+        );
+    }
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
@@ -965,7 +1086,7 @@ fn preview_secure(mut response: Response, preview_type: PreviewType) -> Response
         "x-shelt-preview-kind",
         HeaderValue::from_static(preview_type.kind),
     );
-    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"));
+    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox allow-same-origin; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"));
     headers.insert(
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
@@ -975,7 +1096,7 @@ fn preview_secure(mut response: Response, preview_type: PreviewType) -> Response
 }
 fn secure(mut response: Response) -> Response {
     let headers = response.headers_mut();
-    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"));
+    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"));
     headers.insert(
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
@@ -1341,6 +1462,30 @@ mod tests {
             HeaderValue::from_static("https://evil.example"),
         );
         assert!(!allowed_origin(&state, &headers));
+    }
+
+    #[test]
+    fn tts_request_limits_voices_rates_and_text() {
+        assert!(TtsVoice::valid("zh-CN-XiaoxiaoNeural"));
+        assert!(TtsVoice::valid("en-US-EmmaMultilingualNeural"));
+        assert!(!TtsVoice::valid("../../other"));
+        assert!(valid_tts_rate(0.5));
+        assert!(valid_tts_rate(1.0));
+        assert!(valid_tts_rate(2.0));
+        assert!(!valid_tts_rate(0.49));
+        assert!(!valid_tts_rate(2.01));
+        assert_eq!(tts_rate_percent(0.5), -50);
+        assert_eq!(tts_rate_percent(1.0), 0);
+        assert_eq!(tts_rate_percent(2.0), 100);
+        assert_eq!(
+            escape_tts_text("A & B <tag attr=\"x\">'text'</tag>"),
+            "A &amp; B &lt;tag attr=&quot;x&quot;&gt;&apos;text&apos;&lt;/tag&gt;"
+        );
+        assert_eq!(
+            "你".repeat(MAX_TTS_TEXT_CHARS).chars().count(),
+            MAX_TTS_TEXT_CHARS
+        );
+        assert!("你".repeat(MAX_TTS_TEXT_CHARS + 1).chars().count() > MAX_TTS_TEXT_CHARS);
     }
 
     #[test]

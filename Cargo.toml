@@ -16,9 +16,12 @@ futures-util = "0.3.33"
 libc = "0.2.189"
 portable-pty = "0.9.0"
 rand_core = { version = "0.6.4", features = ["getrandom"] }
+ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "__rustls-tls"] }
 
 [profile.release]
 lto = true

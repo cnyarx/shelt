@@ -78,7 +78,7 @@ function response(body: BodyInit | null, status = 200, headers: HeadersInit = {}
   return new Response(body, {
     status,
     headers: {
-      "Content-Security-Policy": "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       ...headers,
@@ -112,7 +112,7 @@ function previewResponse(body: BodyInit | null, contentType: string, kind: strin
     "Cache-Control": "no-store",
     "Content-Disposition": "inline",
     "X-Shelt-Preview-Kind": kind,
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox allow-same-origin; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
   });
 }
 
@@ -301,6 +301,12 @@ const server = Bun.serve<SessionData>({
     if (url.pathname === "/api/preview" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);
       return previewFile(url.searchParams.get("path"));
+    }
+
+    if (url.pathname === "/api/tts" && req.method === "POST") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      return response("Online TTS is available in the compiled Shelt server", 503);
     }
 
     if (url.pathname === "/api/resolve-terminal-path" && req.method === "GET") {

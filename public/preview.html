@@ -9,6 +9,34 @@
     <link rel="stylesheet" href="/preview.css" />
   </head>
   <body>
+    <aside id="tts-toolbar" class="tts-toolbar collapsed" aria-label="语音朗读工具栏">
+      <button id="tts-toggle" class="tts-toggle" type="button" aria-expanded="false" aria-controls="tts-controls" aria-label="展开语音朗读工具栏">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>
+      </button>
+      <div id="tts-controls" class="tts-controls">
+        <button id="tts-start" type="button" disabled>从头朗读</button>
+        <button id="tts-target" type="button" aria-pressed="false">定位朗读</button>
+        <button id="tts-pause" type="button" disabled>暂停</button>
+        <button id="tts-stop" type="button" disabled>停止</button>
+        <label>语音
+          <select id="tts-voice">
+            <option value="zh-CN-XiaoxiaoNeural">晓晓（中文女声）</option>
+            <option value="zh-CN-YunxiNeural">云希（中文男声）</option>
+            <option value="zh-CN-XiaoyiNeural">晓伊（中文女声）</option>
+            <option value="en-US-EmmaMultilingualNeural">Emma（多语言女声）</option>
+          </select>
+        </label>
+        <label>语速
+          <select id="tts-rate">
+            <option value="0.75">0.75x</option>
+            <option value="1" selected>1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+          </select>
+        </label>
+        <span id="tts-status" role="status" aria-live="polite">正在加载预览…</span>
+      </div>
+    </aside>
     <main id="preview" aria-live="polite">Loading preview…</main>
     <script type="module" src="/preview.js"></script>
   </body>

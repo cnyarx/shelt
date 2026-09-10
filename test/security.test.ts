@@ -44,6 +44,7 @@ describe("terminal CSP", () => {
   test("allows xterm runtime styles without allowing inline scripts", async () => {
     const source = await Bun.file(new URL("../rust/main.rs", import.meta.url)).text();
     expect(source).toContain("style-src 'self' 'unsafe-inline'");
+    expect(source).toContain("media-src 'self' blob:");
     expect(source).toContain("script-src 'self'");
     expect(source).not.toContain("script-src 'self' 'unsafe-inline'");
   });

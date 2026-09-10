@@ -44,14 +44,23 @@ describe("SemanticFrame ANSI normalization", () => {
     expect(concat(normalizeSemanticAnsiChunk(state, update))).toEqual(update);
   });
 
-  test("assembles a synchronized frame split across websocket chunks", () => {
+  test("streams a synchronized frame before the ending marker arrives", () => {
+    const state = createSemanticAnsiState();
+    const start = encoder.encode("\x1b[?2026h" + "\x1b[8;102H│".repeat(10_000));
+    const end = encoder.encode("\x1b[?2026l");
+
+    expect(normalizeSemanticAnsiChunk(state, start)).toEqual([start]);
+    expect(normalizeSemanticAnsiChunk(state, end)).toEqual([end]);
+    expect(state.pending.length).toBe(0);
+  });
+
+  test("streams websocket chunks without waiting to assemble synchronized frames", () => {
     const state = createSemanticAnsiState();
     const input = encoder.encode("prefix\x1b[?2026h\x1b[8;102H\x1b[0;2;39;49m│\x1b[9;102H│\x1b[10;102H│\x1b[8;103H\x1b[0;34m│\x1b[?2026lsuffix");
-    const output = [
-      ...normalizeSemanticAnsiChunk(state, input.slice(0, 12)),
-      ...normalizeSemanticAnsiChunk(state, input.slice(12, 41)),
-      ...normalizeSemanticAnsiChunk(state, input.slice(41)),
-    ];
+    const chunks = [input.slice(0, 12), input.slice(12, 41), input.slice(41)];
+    const output = chunks.flatMap((chunk) => normalizeSemanticAnsiChunk(state, chunk));
+
+    expect(output).toEqual(chunks);
     expect(concat(output)).toEqual(input);
     expect(state.pending.length).toBe(0);
   });
