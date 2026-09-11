@@ -14,6 +14,7 @@ import {
 import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
 import { installVisibleViewportSizing } from "./mobile-viewport.ts";
 import { uploadFileNameHeader } from "./security.ts";
+import { TerminalOutputPump } from "./terminal-output.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -39,6 +40,7 @@ let setupRequired = false;
 let terminal: Terminal | undefined;
 let fit: FitAddon | undefined;
 let socket: WebSocket | undefined;
+let outputPump: TerminalOutputPump | undefined;
 let resizeTimer: ReturnType<typeof setTimeout> | undefined;
 
 function fallbackCopy(text: string): boolean {
@@ -100,6 +102,8 @@ async function authStatus(): Promise<{ setupRequired: boolean; authenticated: bo
 
 function showAuth(required: boolean, message = "") {
   setupRequired = required;
+  outputPump?.close();
+  outputPump = undefined;
   socket?.close();
   socket = undefined;
   mount.hidden = true;
@@ -122,17 +126,31 @@ function connect() {
   if (!terminal) return;
   const nextSocket = new WebSocket(`${scheme}://${location.host}/ws?cols=${terminal.cols}&rows=${terminal.rows}`);
   socket = nextSocket;
+  const currentTerminal = terminal;
+  outputPump?.close();
+  const nextOutputPump = new TerminalOutputPump(
+    (data, callback) => currentTerminal.write(data, callback),
+    (bytes) => {
+      if (socket === nextSocket && nextSocket.readyState === WebSocket.OPEN) {
+        nextSocket.send(JSON.stringify({ type: "output-ack", bytes }));
+      }
+    },
+    () => nextSocket.close(1013, "Terminal output exceeded browser capacity"),
+  );
+  outputPump = nextOutputPump;
   nextSocket.binaryType = "arraybuffer";
   nextSocket.addEventListener("message", (event) => {
-    if (socket !== nextSocket || !terminal) return;
+    if (socket !== nextSocket || outputPump !== nextOutputPump) return;
     if (event.data instanceof ArrayBuffer) {
-      for (const frame of normalizeSemanticAnsiChunk(semanticAnsi, new Uint8Array(event.data))) terminal.write(frame);
+      for (const frame of normalizeSemanticAnsiChunk(semanticAnsi, new Uint8Array(event.data))) nextOutputPump.enqueue(frame);
     } else {
-      terminal.write(event.data);
+      nextOutputPump.enqueue(event.data);
     }
   });
   nextSocket.addEventListener("close", () => {
     if (socket !== nextSocket) return;
+    nextOutputPump.close();
+    if (outputPump === nextOutputPump) outputPump = undefined;
     socket = undefined;
     void authStatus().then((status) => {
       if (!status.authenticated) showAuth(status.setupRequired, "Your session expired. Enter your password again.");
@@ -226,6 +244,10 @@ function startTerminal() {
     return true;
   });
   terminal.onData((data) => send({ type: "input", data }));
+  terminal.onBinary((data) => {
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    socket.send(Uint8Array.from(data, (character) => character.charCodeAt(0)));
+  });
   new ResizeObserver(scheduleResize).observe(mount);
   fit.fit();
   terminal.focus();

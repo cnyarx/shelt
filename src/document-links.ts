@@ -2,10 +2,17 @@ import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 
 const EXTENSIONS = "(?:md|markdown|html?|svg|png|jpe?g|gif|webp)";
 const PATH_START = "(?:/(?!/)|\\.{1,2}/|[^\\s/\"'\\x60:=\\uff1a\\uff0c\\u3001\\u2500-\\u257f()\\[\\]{}]+/)";
-const QUOTED_PATH = new RegExp(`(["'\\x60])(${PATH_START}(?:\\\\.|(?!\\1).)+?\\.${EXTENSIONS})(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?\\1`, "giu");
-const BARE_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001\\u2500-\\u257f])(${PATH_START}(?:\\\\.|[^\\s"'\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)`, "giu");
-const SPACED_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?!/)(?:\\\\.|[^"\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)$`, "giu");
+const QUOTED_PATH = new RegExp(`(["'\\x60])(${PATH_START}(?:\\\\.|(?!\\1)[^\\\\\\r\\n\\u2028\\u2029])+?\\.${EXTENSIONS})(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?\\1`, "giu");
+const BARE_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001\\u2500-\\u257f])(${PATH_START}(?:\\\\.|[^\\\\\\s"'\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)`, "giu");
+const SPACED_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?!/)(?:\\\\.|[^\\\\"\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)$`, "giu");
 const LOCATION_SUFFIX = /(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/i;
+
+let documentLinkCache = new WeakMap<Terminal, Map<number, ILink[]>>();
+
+export function invalidateDocumentLinkCache(terminal?: Terminal): void {
+  if (terminal) documentLinkCache.delete(terminal);
+  else documentLinkCache = new WeakMap();
+}
 
 export type DocumentPathMatch = { path: string; start: number; end: number };
 export type DocumentMouseTarget = Pick<MouseEvent, "button" | "clientX" | "clientY" | "preventDefault" | "stopImmediatePropagation">;
@@ -31,8 +38,10 @@ function addBareMatch(matches: DocumentPathMatch[], match: RegExpMatchArray): vo
   const raw = match[2]!;
   const start = match.index! + prefix.length;
   if (matches.some((existing) => start >= existing.start - 1 && start < existing.end + 1)) return;
-  const tokenPrefix = (match.input ?? "").slice(0, start).match(/[^\s"'`()[\]{}]+$/u)?.[0] ?? "";
-  if (tokenPrefix.includes("://")) return;
+  const input = match.input ?? "";
+  let tokenStart = start;
+  while (tokenStart > 0 && !/[\s"'`()[\]{}]/u.test(input[tokenStart - 1]!)) tokenStart--;
+  if (input.slice(tokenStart, start).includes("://")) return;
   const withoutLocation = raw.replace(LOCATION_SUFFIX, "");
   if (withoutLocation.includes("://")) return;
   matches.push({
@@ -57,6 +66,10 @@ function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILi
     firstLineNumber--;
   }
 
+  const perTerminalCache = documentLinkCache.get(terminal) ?? new Map<number, ILink[]>();
+  const cached = perTerminalCache.get(firstLineNumber);
+  if (cached) return cached;
+
   let text = "";
   const offsets: Array<{ start: number; end: number; cell: number; line: number }> = [];
   let lineNumber = firstLineNumber;
@@ -77,7 +90,7 @@ function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILi
     lineNumber++;
   }
 
-  return findDocumentPaths(text).flatMap<ILink>((match) => {
+  const result = findDocumentPaths(text).flatMap<ILink>((match) => {
     const first = offsets.find((offset) => match.start >= offset.start && match.start < offset.end);
     const last = offsets.findLast((offset) => match.end > offset.start && match.end <= offset.end)
       ?? offsets.findLast((offset) => offset.start < match.end);
@@ -91,6 +104,9 @@ function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILi
       activate: () => undefined,
     }];
   });
+  documentLinkCache.set(terminal, perTerminalCache);
+  perTerminalCache.set(firstLineNumber, result);
+  return result;
 }
 
 export function documentPathAtMouse(
@@ -153,10 +169,12 @@ export function createDocumentLinkIndicatorLayer(
   layer.className = "document-link-indicators";
   screen.append(layer);
 
+  let renderedLayout = "";
   const refresh = () => {
     const cellWidth = screen.clientWidth / terminal.cols;
     const cellHeight = screen.clientHeight / terminal.rows;
     const indicators: HTMLSpanElement[] = [];
+    const layout: string[] = [];
     const start = terminal.buffer.active.viewportY;
     const rendered = new Set<string>();
     for (let row = 0; row < terminal.rows; row += 1) {
@@ -170,21 +188,29 @@ export function createDocumentLinkIndicatorLayer(
         for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber += 1) {
           const startX = lineNumber === link.range.start.y ? link.range.start.x : 1;
           const endX = lineNumber === link.range.end.y ? link.range.end.x : terminal.cols;
+          const left = (startX - 1) * cellWidth;
+          const top = (lineNumber - start - 1) * cellHeight;
+          const width = (endX - startX + 1) * cellWidth;
+          const height = Math.max(1, cellHeight - 2);
+          layout.push(`${left}:${top}:${width}:${height}`);
           const indicator = document.createElement("span");
-          indicator.style.left = `${(startX - 1) * cellWidth}px`;
-          indicator.style.top = `${(lineNumber - start - 1) * cellHeight}px`;
-          indicator.style.width = `${(endX - startX + 1) * cellWidth}px`;
-          indicator.style.height = `${Math.max(1, cellHeight - 2)}px`;
+          indicator.style.left = `${left}px`;
+          indicator.style.top = `${top}px`;
+          indicator.style.width = `${width}px`;
+          indicator.style.height = `${height}px`;
           indicators.push(indicator);
         }
       }
     }
+    const nextLayout = layout.join("|");
+    if (nextLayout === renderedLayout) return;
+    renderedLayout = nextLayout;
     layer.replaceChildren(...indicators);
   };
 
   let animationFrame: number | undefined;
   const scheduleRefresh = () => {
-    if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+    if (animationFrame !== undefined) return;
     animationFrame = requestAnimationFrame(() => {
       animationFrame = undefined;
       refresh();
@@ -192,10 +218,14 @@ export function createDocumentLinkIndicatorLayer(
   };
   const screenResizeObserver = new ResizeObserver(scheduleRefresh);
   screenResizeObserver.observe(screen);
-  const onWriteDisposable = terminal.onWriteParsed(scheduleRefresh);
-  const onRenderDisposable = terminal.onRender(scheduleRefresh);
-  const onScrollDisposable = terminal.onScroll(scheduleRefresh);
-  const onResizeDisposable = terminal.onResize(scheduleRefresh);
+  const onWriteDisposable = terminal.onWriteParsed(() => {
+    invalidateDocumentLinkCache(terminal);
+    scheduleRefresh();
+  });
+  const onResizeDisposable = terminal.onResize(() => {
+    invalidateDocumentLinkCache(terminal);
+    scheduleRefresh();
+  });
   refresh();
 
   return {
@@ -203,8 +233,6 @@ export function createDocumentLinkIndicatorLayer(
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
       screenResizeObserver.disconnect();
       onWriteDisposable.dispose();
-      onRenderDisposable.dispose();
-      onScrollDisposable.dispose();
       onResizeDisposable.dispose();
       layer.remove();
     },

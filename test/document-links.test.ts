@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import type { ILinkProvider, Terminal } from "@xterm/xterm";
 import {
   createDocumentLinkProvider,
@@ -7,6 +8,11 @@ import {
   previewUrl,
   registerDocumentLinkMouseActivation,
 } from "../src/document-links.ts";
+
+// Chrome uses V8; Bun's JavaScriptCore does not reproduce escaped-path backtracking.
+const documentLinksSource = new Bun.Transpiler({ loader: "ts" }).transformSync(
+  await Bun.file(new URL("../src/document-links.ts", import.meta.url)).text(),
+);
 
 function provideLinks(provider: ILinkProvider, line: number) {
   return new Promise<NonNullable<Parameters<Parameters<typeof provider.provideLinks>[1]>[0]>>((resolve) => {
@@ -69,6 +75,38 @@ describe("terminal document links", () => {
     expect(findDocumentPaths("http://localhost:6080/vnc.html")).toEqual([]);
     expect(findDocumentPaths("open 6080/vnc.html")).toEqual([
       { path: "6080/vnc.html", start: 5, end: 18 },
+    ]);
+  });
+
+  test("finishes scanning truncated Git-escaped paths within a bounded subprocess", () => {
+    const escaped = String.raw`\345\244\247\346\250\241`.repeat(16);
+    const complete = `a/${escaped}.md`;
+    const inputs = [
+      `diff --git "${complete}" "b/${escaped}`,
+      `'b/${escaped}`,
+      `\`b/${escaped}`,
+      `/tmp/${escaped}`,
+      `/tmp/design notes/${escaped}`,
+      `diff --git "${complete}" "b/${escaped}\ncontinuation.md"`,
+      `diff --git "${complete}" "b/${escaped}.md"`,
+    ];
+    const output = execFileSync("node", ["--input-type=module", "--eval", `
+      ${documentLinksSource}
+      console.log(JSON.stringify(${JSON.stringify(inputs)}.map(text => findDocumentPaths(text).map(match => match.path))));
+    `], { timeout: 2000, encoding: "utf8" });
+    expect(JSON.parse(output)).toEqual([
+      [complete], [], [], [], [], [complete], [complete, `b/${escaped}.md`],
+    ]);
+  });
+
+  test("checks URL prefixes without rescanning a long preceding token", () => {
+    const input = `${"中English".repeat(5000)} /tmp/a.md`;
+    const output = execFileSync("node", ["--input-type=module", "--eval", `
+      ${documentLinksSource}
+      console.log(JSON.stringify(findDocumentPaths(${JSON.stringify(input)})));
+    `], { timeout: 2000, encoding: "utf8" });
+    expect(JSON.parse(output)).toEqual([
+      { path: "/tmp/a.md", start: input.length - 9, end: input.length },
     ]);
   });
 

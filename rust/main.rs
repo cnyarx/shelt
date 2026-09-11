@@ -41,6 +41,9 @@ const TTS_TIMEOUT: Duration = Duration::from_secs(45);
 const MAX_MARKDOWN_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_PREVIEW_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+const TERMINAL_OUTPUT_WINDOW_BYTES: usize = 512 * 1024;
+const TERMINAL_OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
+const TERMINAL_OUTPUT_CHANNEL_CAPACITY: usize = 8;
 const INDEX_HTML: &[u8] = include_bytes!("../dist/index.html");
 const STYLE_CSS: &[u8] = include_bytes!("../dist/style.css");
 const CLIENT_CSS: &[u8] = include_bytes!("../dist/client.css");
@@ -186,6 +189,8 @@ enum ClientMessage {
     Resize { cols: u16, rows: u16 },
     #[serde(rename = "paste-path")]
     PastePath { path: String },
+    #[serde(rename = "output-ack")]
+    OutputAck { bytes: usize },
 }
 
 #[derive(Serialize)]
@@ -992,11 +997,11 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
         kill_group(old.pgid);
         let _ = old.cancel.send(());
     }
-    let (pty_tx, mut pty_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (pty_tx, mut pty_rx) = mpsc::channel::<Vec<u8>>(TERMINAL_OUTPUT_CHANNEL_CAPACITY);
     std::thread::spawn(move || {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; TERMINAL_OUTPUT_CHUNK_BYTES];
         while let Ok(n) = reader.read(&mut buf) {
-            if n == 0 || pty_tx.send(buf[..n].to_vec()).is_err() {
+            if n == 0 || pty_tx.blocking_send(buf[..n].to_vec()).is_err() {
                 break;
             }
         }
@@ -1008,11 +1013,15 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
         let _ = exit_tx.send(());
     });
     let (mut ws_tx, mut ws_rx) = socket.split();
+    let mut outstanding_output_bytes = 0usize;
     loop {
         tokio::select! {
             _ = &mut cancel_rx => break,
             _ = exit_rx.recv() => break,
-            Some(data) = pty_rx.recv() => if ws_tx.send(Message::binary(data)).await.is_err() { break; },
+            Some(data) = pty_rx.recv(), if outstanding_output_bytes <= TERMINAL_OUTPUT_WINDOW_BYTES - TERMINAL_OUTPUT_CHUNK_BYTES => {
+                outstanding_output_bytes += data.len();
+                if ws_tx.send(Message::binary(data)).await.is_err() { break; }
+            },
             message = ws_rx.next() => match message {
                 Some(Ok(Message::Text(text))) => {
                     let Ok(message) = serde_json::from_slice::<ClientMessage>(text.as_bytes()) else { break; };
@@ -1023,21 +1032,11 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
                             let path = PathBuf::from(path);
                             if state.uploaded_paths.lock().unwrap().remove(&path) { let _ = writer.write_all(bracketed_paste(path.to_string_lossy().as_ref()).as_bytes()); }
                         }
+                        ClientMessage::OutputAck { bytes } if bytes <= outstanding_output_bytes => { outstanding_output_bytes -= bytes; }
                         _ => {}
                     }
                 }
-                Some(Ok(Message::Binary(bytes))) => {
-                    let Ok(message) = serde_json::from_slice::<ClientMessage>(&bytes) else { break; };
-                    match message {
-                        ClientMessage::Input { data } if writer.write_all(data.as_bytes()).is_err() => break,
-                        ClientMessage::Resize { cols, rows } if (1..=1000).contains(&cols) && (1..=500).contains(&rows) => { let _ = pair.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }); }
-                        ClientMessage::PastePath { path } => {
-                            let path = PathBuf::from(path);
-                            if state.uploaded_paths.lock().unwrap().remove(&path) { let _ = writer.write_all(bracketed_paste(path.to_string_lossy().as_ref()).as_bytes()); }
-                        }
-                        _ => {}
-                    }
-                }
+                Some(Ok(Message::Binary(bytes))) if writer.write_all(&bytes).is_err() => break,
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 _ => {}
             }

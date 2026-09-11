@@ -1,4 +1,5 @@
 export const TOUCH_WHEEL_THRESHOLD = 28;
+export const MAX_TOUCH_WHEEL_TICKS_PER_FRAME = 4;
 
 export function consumeTouchWheelDelta(accumulated: number, deltaY: number, threshold = TOUCH_WHEEL_THRESHOLD): { ticks: number; remainder: number } {
   const total = accumulated + deltaY;
@@ -12,12 +13,42 @@ export function updateTouchGestureState(blockedUntilEnd: boolean, touchCount: nu
   return { blockedUntilEnd: false, singleTouchActive: true };
 }
 
+export function consumeTouchWheelTicks(pendingTicks: number, maxTicks = MAX_TOUCH_WHEEL_TICKS_PER_FRAME): { ticks: number; remainder: number } {
+  const ticks = Math.sign(pendingTicks) * Math.min(Math.abs(pendingTicks), maxTicks);
+  return { ticks, remainder: pendingTicks - ticks };
+}
+
 export function installTerminalTouchScrolling(mount: HTMLElement): void {
   let lastX = 0;
   let lastY = 0;
   let accumulated = 0;
+  let pendingTicks = 0;
+  let animationFrame: number | undefined;
   let blockedUntilEnd = false;
   let singleTouchActive = false;
+  let lastClientX = 0;
+  let lastClientY = 0;
+
+  const flushTicks = () => {
+    animationFrame = undefined;
+    if (!singleTouchActive || blockedUntilEnd) { pendingTicks = 0; return; }
+    const terminalElement = mount.querySelector<HTMLElement>(".xterm");
+    if (!terminalElement) { pendingTicks = 0; return; }
+    const result = consumeTouchWheelTicks(pendingTicks);
+    pendingTicks = result.remainder;
+    const direction = Math.sign(result.ticks);
+    for (let index = 0; index < Math.abs(result.ticks); index++) {
+      terminalElement.dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: lastClientX,
+        clientY: lastClientY,
+        deltaMode: WheelEvent.DOM_DELTA_LINE,
+        deltaY: direction,
+      }));
+    }
+    if (pendingTicks !== 0) animationFrame = requestAnimationFrame(flushTicks);
+  };
 
   mount.addEventListener("touchstart", (event) => {
     const state = updateTouchGestureState(blockedUntilEnd, event.touches.length);
@@ -46,19 +77,10 @@ export function installTerminalTouchScrolling(mount: HTMLElement): void {
     if (result.ticks === 0) return;
 
     event.preventDefault();
-    const terminalElement = mount.querySelector<HTMLElement>(".xterm");
-    if (!terminalElement) return;
-    const direction = Math.sign(result.ticks);
-    for (let index = 0; index < Math.abs(result.ticks); index++) {
-      terminalElement.dispatchEvent(new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        deltaMode: WheelEvent.DOM_DELTA_LINE,
-        deltaY: direction,
-      }));
-    }
+    pendingTicks += result.ticks;
+    lastClientX = touch.clientX;
+    lastClientY = touch.clientY;
+    if (animationFrame === undefined) animationFrame = requestAnimationFrame(flushTicks);
   }, { passive: false });
 
   const finishTouch = (event: TouchEvent) => {
@@ -66,6 +88,9 @@ export function installTerminalTouchScrolling(mount: HTMLElement): void {
     blockedUntilEnd = state.blockedUntilEnd;
     singleTouchActive = false;
     accumulated = 0;
+    pendingTicks = 0;
+    if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+    animationFrame = undefined;
   };
   mount.addEventListener("touchend", finishTouch, { passive: true });
   mount.addEventListener("touchcancel", finishTouch, { passive: true });

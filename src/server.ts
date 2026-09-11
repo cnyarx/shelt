@@ -66,12 +66,23 @@ let activeSocket: Bun.ServerWebSocket<SessionData> | null = null;
 let activeProcess: Bun.Subprocess | null = null;
 let failedLogins = 0;
 const uploadedPaths = new Set<string>();
+const TERMINAL_OUTPUT_WINDOW_BYTES = 512 * 1024;
+const MAX_TERMINAL_OUTPUT_QUEUE_BYTES = 1024 * 1024;
 
-type SessionData = { terminal: Bun.Terminal | null; process: Bun.Subprocess | null; cols: number; rows: number };
+type SessionData = {
+  terminal: Bun.Terminal | null;
+  process: Bun.Subprocess | null;
+  cols: number;
+  rows: number;
+  outstandingOutputBytes: number;
+  outputQueue: Uint8Array[];
+  outputQueueBytes: number;
+};
 type ClientMessage =
   | { type: "input"; data: string }
   | { type: "resize"; cols: number; rows: number }
-  | { type: "paste-path"; path: string };
+  | { type: "paste-path"; path: string }
+  | { type: "output-ack"; bytes: number };
 type AuthRequest = { password?: unknown; remember?: unknown };
 
 function response(body: BodyInit | null, status = 200, headers: HeadersInit = {}): Response {
@@ -88,6 +99,31 @@ function response(body: BodyInit | null, status = 200, headers: HeadersInit = {}
 
 function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
   return response(JSON.stringify(body), status, { "Content-Type": "application/json", ...headers });
+}
+
+function flushTerminalOutput(ws: Bun.ServerWebSocket<SessionData>): void {
+  while (ws.data.outputQueue.length > 0) {
+    const data = ws.data.outputQueue[0]!;
+    if (ws.data.outstandingOutputBytes + data.byteLength > TERMINAL_OUTPUT_WINDOW_BYTES) return;
+    ws.data.outputQueue.shift();
+    ws.data.outputQueueBytes -= data.byteLength;
+    const sent = ws.sendBinary(data);
+    if (sent <= 0) {
+      ws.close(1013, "Terminal output exceeded WebSocket capacity");
+      return;
+    }
+    ws.data.outstandingOutputBytes += data.byteLength;
+  }
+}
+
+function queueTerminalOutput(ws: Bun.ServerWebSocket<SessionData>, data: Uint8Array): void {
+  if (ws.data.outputQueueBytes + data.byteLength > MAX_TERMINAL_OUTPUT_QUEUE_BYTES) {
+    ws.close(1013, "Terminal output exceeded server capacity");
+    return;
+  }
+  ws.data.outputQueue.push(data.slice());
+  ws.data.outputQueueBytes += data.byteLength;
+  flushTerminalOutput(ws);
 }
 
 async function authBody(req: Request): Promise<AuthRequest | null> {
@@ -294,7 +330,17 @@ const server = Bun.serve<SessionData>({
       if (!authenticated(req)) return response("Authentication required", 401);
       const cols = Math.min(1000, Math.max(1, Number.parseInt(url.searchParams.get("cols") || "120", 10) || 120));
       const rows = Math.min(500, Math.max(1, Number.parseInt(url.searchParams.get("rows") || "40", 10) || 40));
-      if (!server.upgrade(req, { data: { terminal: null, process: null, cols, rows } })) return response("Upgrade failed", 400);
+      if (!server.upgrade(req, {
+        data: {
+          terminal: null,
+          process: null,
+          cols,
+          rows,
+          outstandingOutputBytes: 0,
+          outputQueue: [],
+          outputQueueBytes: 0,
+        },
+      })) return response("Upgrade failed", 400);
       return;
     }
 
@@ -350,6 +396,8 @@ const server = Bun.serve<SessionData>({
     return response("Not found", 404);
   },
   websocket: {
+    backpressureLimit: MAX_TERMINAL_OUTPUT_QUEUE_BYTES,
+    closeOnBackpressureLimit: true,
     open(ws) {
       activeSocket?.close(1012, "Replaced by a newer Shelt controller");
       activeProcess?.kill("SIGKILL");
@@ -365,7 +413,7 @@ const server = Bun.serve<SessionData>({
         name: "xterm-256color",
         cols: ws.data.cols,
         rows: ws.data.rows,
-        data: (_terminal, data) => ws.sendBinary(data),
+        data: (_terminal, data) => queueTerminalOutput(ws, data),
       });
       const child = Bun.spawn([launch.command, ...launch.args], {
         cwd: process.env.HOME || process.cwd(),
@@ -382,16 +430,26 @@ const server = Bun.serve<SessionData>({
       activeSocket = ws;
       activeProcess = child;
     },
+    drain(ws) {
+      if (ws === activeSocket) flushTerminalOutput(ws);
+    },
     message(ws, raw) {
       if (ws !== activeSocket || !ws.data.terminal) return;
+      if (typeof raw !== "string") {
+        ws.data.terminal.write(raw);
+        return;
+      }
       try {
-        const message = JSON.parse(typeof raw === "string" ? raw : Buffer.from(raw).toString("utf8")) as ClientMessage;
+        const message = JSON.parse(raw) as ClientMessage;
         if (message.type === "input" && typeof message.data === "string") {
           ws.data.terminal.write(message.data);
         } else if (message.type === "resize" && Number.isInteger(message.cols) && Number.isInteger(message.rows) && message.cols > 0 && message.rows > 0 && message.cols <= 1000 && message.rows <= 500) {
           ws.data.terminal.resize(message.cols, message.rows);
         } else if (message.type === "paste-path" && typeof message.path === "string" && uploadedPaths.delete(message.path)) {
           ws.data.terminal.write(bracketedPaste(message.path));
+        } else if (message.type === "output-ack" && Number.isInteger(message.bytes) && message.bytes > 0 && message.bytes <= ws.data.outstandingOutputBytes) {
+          ws.data.outstandingOutputBytes -= message.bytes;
+          flushTerminalOutput(ws);
         }
       } catch {
         ws.close(1003, "Invalid message");

@@ -70,6 +70,10 @@ describe("production bundle", () => {
     expect(client).toContain("visualViewport");
     expect(client).toContain("--shelt-viewport-height");
     expect(client).toContain('type:"resize"');
+    expect(client).toContain('type:"output-ack"');
+    expect(client).toContain("Terminal output exceeded browser capacity");
+    expect(client).toContain("onBinary");
+    expect(client).toContain("requestAnimationFrame");
     expect(client).not.toContain("previousSocket");
     expect(preview).toContain("Mermaid preview unavailable");
     expect(preview).toContain('output:"mathml"');
