@@ -37,6 +37,12 @@
         <span id="tts-status" role="status" aria-live="polite">正在加载预览…</span>
       </div>
     </aside>
+    <nav id="toc-panel" class="toc-panel" aria-label="文档目录" hidden>
+      <button id="toc-toggle" class="toc-toggle" type="button" aria-expanded="true" aria-controls="toc-list" aria-label="切换目录导航">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h14v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+      </button>
+      <div id="toc-list" class="toc-list" role="region" aria-label="文档目录树"></div>
+    </nav>
     <main id="preview" aria-live="polite">Loading preview…</main>
     <script type="module" src="/preview.js"></script>
   </body>

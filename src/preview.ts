@@ -34,6 +34,7 @@ async function load(path: string): Promise<void> {
     const rendered = renderMarkdown(await response.text(), path);
     mount.className = "markdown-body";
     mount.innerHTML = rendered.html;
+    setupTableOfContents();
     await Promise.all(rendered.mermaid.map(async (diagram) => {
       const figure = mount.querySelector<HTMLElement>(`[data-mermaid-id="${diagram.id}"]`);
       if (!figure) return;
@@ -102,6 +103,87 @@ function sanitizeSvg(source: string): string {
     }
   }
   return new XMLSerializer().serializeToString(document.documentElement);
+}
+
+function setupTableOfContents(): void {
+  const headings = [...mount.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")];
+  if (!headings.length) return;
+  const panel = requiredElement("toc-panel");
+  const toggle = requiredElement("toc-toggle");
+  const list = requiredElement("toc-list");
+  const tree = document.createElement("ul");
+  tree.className = "toc-tree";
+  const stack: { level: number; item: HTMLLIElement; list: HTMLUListElement }[] = [];
+  const links: HTMLAnchorElement[] = [];
+  for (const heading of headings) {
+    const level = Number(heading.tagName.slice(1));
+    while (stack.length && stack[stack.length - 1]!.level >= level) stack.pop();
+    const parent = stack[stack.length - 1];
+    let container = tree;
+    if (parent) {
+      container = parent.list;
+      if (!container.parentElement) parent.item.append(container);
+    }
+    const item = document.createElement("li");
+    item.className = `toc-item toc-item-l${stack.length + 1}`;
+    const link = document.createElement("a");
+    link.className = "toc-link";
+    link.href = `#${encodeURIComponent(heading.id)}`;
+    link.textContent = heading.textContent || "未命名标题";
+    link.title = link.textContent;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      heading.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+      history.replaceState(null, "", link.hash);
+      if (matchMedia("(max-width: 900px)").matches) setExpanded(false);
+    });
+    links.push(link);
+    item.append(link);
+    container.append(item);
+    const children = document.createElement("ul");
+    children.className = "toc-tree";
+    stack.push({ level, item, list: children });
+  }
+  list.replaceChildren(tree);
+  panel.hidden = false;
+  function setExpanded(expanded: boolean): void {
+    panel.classList.toggle("collapsed", !expanded);
+    toggle.setAttribute("aria-expanded", String(expanded));
+  }
+  toggle.addEventListener("click", () => setExpanded(panel.classList.contains("collapsed")));
+  panel.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setExpanded(false);
+      toggle.focus();
+    }
+  });
+  const toolbar = requiredElement("tts-toolbar");
+  const placePanel = () => {
+    panel.style.top = `${toolbar.getBoundingClientRect().bottom + 8}px`;
+  };
+  new ResizeObserver(placePanel).observe(toolbar);
+  placePanel();
+  let scheduled = false;
+  const updateActive = () => {
+    scheduled = false;
+    let active = 0;
+    for (let index = 0; index < headings.length; index++) {
+      if (headings[index]!.getBoundingClientRect().top <= 100) active = index;
+    }
+    links.forEach((link, index) => {
+      link.classList.toggle("toc-active", index === active);
+      if (index === active) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  };
+  window.addEventListener("scroll", () => {
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(updateActive);
+    }
+  }, { passive: true });
+  window.addEventListener("resize", updateActive);
+  updateActive();
 }
 
 function showError(message: string): void {

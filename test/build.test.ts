@@ -47,6 +47,11 @@ describe("production bundle", () => {
     expect(html).not.toContain('id="tts-mode"');
     expect(html).not.toContain('value="local"');
     expect(html).not.toContain('id="tts-play-here"');
+    expect(html).toContain('id="toc-panel"');
+    expect(html).toContain('id="toc-toggle"');
+    expect(html).toContain('id="toc-list"');
+    expect(html).toContain('aria-label="文档目录"');
+    expect(html).toContain('aria-label="文档目录树"');
     expect(html).toContain('src="/preview.js"');
     expect(styles).toContain(".tts-toolbar { position: fixed;");
     expect(styles).toContain(".tts-toolbar.collapsed { padding: 0;");
@@ -55,6 +60,15 @@ describe("production bundle", () => {
     expect(styles).toContain("backdrop-filter: blur(18px) saturate(150%);");
     expect(styles).not.toContain(".tts-play-here");
     expect(styles).toContain(".tts-speaking {");
+    expect(styles).toContain(".toc-panel {");
+    expect(styles).toContain(".toc-toggle {");
+    expect(styles).toContain(".toc-list {");
+    expect(styles).toContain(".toc-tree {");
+    expect(styles).toContain(".toc-link {");
+    expect(styles).toContain(".toc-link.toc-active {");
+    expect(styles).toContain(".toc-item.toc-item-l2 > .toc-link");
+    expect(styles).toContain(".toc-item.toc-item-l3 > .toc-link");
+    expect(styles).toContain("scroll-margin-top: 80px;");
     expect(styles).toContain(".markdown-body { width: min(1600px, calc(100% - 48px));");
     expect(styles).toContain("overflow-wrap: break-word;");
     expect(styles).toContain(".table-wrap { max-width: 100%; overflow-x: auto; }");
