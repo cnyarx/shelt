@@ -146,9 +146,21 @@ function setupTableOfContents(): void {
   }
   list.replaceChildren(tree);
   panel.hidden = false;
+  function revealActiveLink(): void {
+    if (panel.classList.contains("collapsed")) return;
+    const link = links.find((link) => link.classList.contains("toc-active"));
+    if (!link) return;
+    const bounds = list.getBoundingClientRect();
+    const item = link.getBoundingClientRect();
+    const top = bounds.top + list.clientTop;
+    const bottom = top + list.clientHeight;
+    if (item.top < top) list.scrollTop += item.top - top;
+    else if (item.bottom > bottom) list.scrollTop += item.bottom - bottom;
+  }
   function setExpanded(expanded: boolean): void {
     panel.classList.toggle("collapsed", !expanded);
     toggle.setAttribute("aria-expanded", String(expanded));
+    if (expanded) revealActiveLink();
   }
   toggle.addEventListener("click", () => setExpanded(panel.classList.contains("collapsed")));
   panel.addEventListener("keydown", (event) => {
@@ -175,6 +187,7 @@ function setupTableOfContents(): void {
       if (index === active) link.setAttribute("aria-current", "location");
       else link.removeAttribute("aria-current");
     });
+    revealActiveLink();
   };
   window.addEventListener("scroll", () => {
     if (!scheduled) {
