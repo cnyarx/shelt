@@ -26,6 +26,12 @@ Shelt exposes a real PTY in the browser through a single xterm.js surface. When 
 
 Shelt deliberately does not recreate tabs, sidebars, composers, or other application UI. The browser displays the terminal exactly as the underlying program renders it.
 
+## Read-only document sharing
+
+After signing in, open a document preview and use the top-right share button to create and copy an independent `/share/<key>` link. Recipients can anonymously read the current file and controlled local image references, without terminal, upload, or other document access. Links expire after seven days and can be revoked from the original preview. Regenerating a link immediately invalidates the previous one.
+
+Only SHA-256 key hashes are persisted in the state directory's `shares.json`; links survive restarts. The original key cannot be recovered after leaving the page. Shared pages hide online speech and share management; HTML/SVG retain static sandboxed previews. Send links only to trusted recipients and use HTTPS. Revocation cannot remove copies that recipients have already saved.
+
 ## Requirements
 
 Build requirements:

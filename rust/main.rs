@@ -1,5 +1,7 @@
 mod auth;
 mod edge_tts;
+mod share_routes;
+mod shares;
 
 use auth::{password_error, AuthStore, MAX_AUTH_BODY_BYTES};
 use axum::{
@@ -79,6 +81,7 @@ struct AppState {
     uploaded_paths: Arc<Mutex<HashSet<PathBuf>>>,
     active: Arc<Mutex<Option<ActiveSession>>>,
     auth: AuthStore,
+    shares: shares::ShareStore,
     failed_logins: Arc<Mutex<u32>>,
 }
 
@@ -387,6 +390,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
         active: Arc::new(Mutex::new(None)),
         auth,
+        shares: shares::ShareStore::load(state_dir().join("shares.json"))?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
     let app = Router::new()
@@ -406,6 +410,13 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             post(upload_handler).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
         )
         .route("/api/preview", get(preview_handler))
+        .route(
+            "/api/shares",
+            get(share_routes::manage)
+                .post(share_routes::manage)
+                .delete(share_routes::manage),
+        )
+        .route("/api/share/{token}", get(share_routes::content))
         .route(
             "/api/tts",
             post(tts_handler).layer(DefaultBodyLimit::max(MAX_TTS_BODY_BYTES)),
@@ -823,6 +834,12 @@ async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: 
         "/client.css" => (CLIENT_CSS, "text/css; charset=utf-8", None),
         "/client.js" => (CLIENT_JS_GZ, "text/javascript; charset=utf-8", Some("gzip")),
         "/preview" | "/preview.html" => (PREVIEW_HTML, "text/html; charset=utf-8", None),
+        path if path
+            .strip_prefix("/share/")
+            .is_some_and(|key| shares::token_hash(key).is_some()) =>
+        {
+            (PREVIEW_HTML, "text/html; charset=utf-8", None)
+        }
         "/preview.css" => (PREVIEW_CSS, "text/css; charset=utf-8", None),
         "/preview.js" => (
             PREVIEW_JS_GZ,
@@ -1437,6 +1454,10 @@ mod tests {
             auth: AuthStore::load(
                 env::temp_dir().join(format!("shelt-auth-test-{}", std::process::id())),
                 false,
+            )
+            .unwrap(),
+            shares: shares::ShareStore::load(
+                env::temp_dir().join(format!("shelt-shares-origin-test-{}", std::process::id())),
             )
             .unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),

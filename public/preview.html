@@ -9,6 +9,16 @@
     <link rel="stylesheet" href="/preview.css" />
   </head>
   <body>
+    <aside id="share-toolbar" class="share-toolbar" aria-label="文档分享" hidden>
+      <button id="share-toggle" type="button" aria-expanded="false" aria-controls="share-panel">分享</button>
+      <section id="share-panel" hidden>
+        <strong>只读分享</strong>
+        <p id="share-status" role="status" aria-live="polite">正在查询分享状态…</p>
+        <input id="share-url" type="text" readonly aria-label="分享链接" hidden>
+        <button id="share-create" type="button">创建并复制链接</button>
+        <button id="share-revoke" type="button" disabled>撤销分享</button>
+      </section>
+    </aside>
     <aside id="tts-toolbar" class="tts-toolbar collapsed" aria-label="语音朗读工具栏">
       <button id="tts-toggle" class="tts-toggle" type="button" aria-expanded="false" aria-controls="tts-controls" aria-label="展开语音朗读工具栏">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>

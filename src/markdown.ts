@@ -188,6 +188,7 @@ function listLine(line: string): ListLine | null {
 
 export function localImagePreviewUrl(source: string, documentPath: string): string | null {
   if (!source || source.startsWith("#") || /^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith("//")) return null;
+  if (/^share:[a-f0-9]{64}$/.test(documentPath)) return `/api/share/${documentPath.slice(6)}?source=${encodeURIComponent(source)}`;
   const base = documentPath.slice(0, documentPath.lastIndexOf("/") + 1);
   const stack = (source.startsWith("/") ? [] : base.split("/")).filter(Boolean);
   for (const part of source.split("/")) {

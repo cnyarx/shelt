@@ -1,6 +1,7 @@
 import { renderMermaid } from "@vercel/beautiful-mermaid";
 import { escapeHtml, renderMarkdown } from "./markdown.ts";
 import { PreviewTtsController } from "./tts.ts";
+import { setupShare } from "./share-ui.ts";
 
 function requiredElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -9,17 +10,19 @@ function requiredElement(id: string): HTMLElement {
 }
 
 const mount = requiredElement("preview");
-const tts = new PreviewTtsController();
-const path = new URL(location.href).searchParams.get("path");
-if (!path || !path.startsWith("/")) {
+const shareKey = location.pathname.match(/^\/share\/([a-f0-9]{64})$/)?.[1];
+const tts = shareKey ? null : new PreviewTtsController();
+if (shareKey) requiredElement("tts-toolbar").hidden = true;
+const path = shareKey ? `share:${shareKey}` : new URL(location.href).searchParams.get("path");
+if (!path || (!shareKey && !path.startsWith("/"))) {
   showError("Absolute preview path required.");
 } else {
-  document.title = `${path.split("/").pop() || path} — Shelt`;
-  void load(path);
+  document.title = shareKey ? "文档分享 — Shelt" : `${path.split("/").pop() || path} — Shelt`;
+  void load(path).catch(() => showError("无法加载文档，请检查网络后重试。"));
 }
 
 async function load(path: string): Promise<void> {
-  const apiUrl = `/api/preview?path=${encodeURIComponent(path)}`;
+  const apiUrl = shareKey ? `/api/share/${shareKey}` : `/api/preview?path=${encodeURIComponent(path)}`;
   const response = await fetch(apiUrl, { credentials: "same-origin" });
   if (response.status === 401) {
     showError("Authentication required. Unlock Shelt in the terminal tab, then reload this page.");
@@ -29,6 +32,7 @@ async function load(path: string): Promise<void> {
     showError(await response.text());
     return;
   }
+  if (!shareKey) setupShare(path);
   const kind = response.headers.get("x-shelt-preview-kind");
   if (kind === "markdown") {
     const rendered = renderMarkdown(await response.text(), path);
@@ -55,7 +59,7 @@ async function load(path: string): Promise<void> {
         figure.insertAdjacentHTML("beforeend", `<figcaption>Mermaid preview unavailable: ${escapeHtml(message)}</figcaption>`);
       }
     }));
-    tts.setDocument(mount);
+    tts?.setDocument(mount);
     return;
   }
   if (kind === "image") {
@@ -64,7 +68,7 @@ async function load(path: string): Promise<void> {
     image.src = apiUrl;
     image.alt = path.split("/").pop() || "Image preview";
     mount.replaceChildren(image);
-    tts.setDocument(null, undefined, "图片预览未启用 OCR 识别");
+    tts?.setDocument(null, undefined, "图片预览未启用 OCR 识别");
     return;
   }
   if (kind === "html" || kind === "svg") {
@@ -76,9 +80,9 @@ async function load(path: string): Promise<void> {
     mount.replaceChildren(frame);
     frame.addEventListener("load", () => {
       try {
-        tts.setDocument(frame.contentDocument, frame);
+        tts?.setDocument(frame.contentDocument, frame);
       } catch {
-        tts.setDocument(null, undefined, "此预览没有可朗读内容");
+        tts?.setDocument(null, undefined, "此预览没有可朗读内容");
       }
     });
     return;
@@ -171,7 +175,8 @@ function setupTableOfContents(): void {
   });
   const toolbar = requiredElement("tts-toolbar");
   const placePanel = () => {
-    panel.style.top = `${toolbar.getBoundingClientRect().bottom + 8}px`;
+    const sharing = requiredElement("share-toolbar");
+    panel.style.top = `${toolbar.hidden ? 16 : Math.max(toolbar.getBoundingClientRect().bottom, sharing.hidden ? 0 : sharing.getBoundingClientRect().bottom) + 8}px`;
   };
   new ResizeObserver(placePanel).observe(toolbar);
   placePanel();

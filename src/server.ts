@@ -8,6 +8,7 @@ import {
   sessionCookie,
 } from "./auth.ts";
 import { embeddedAssets } from "./generated-assets.ts";
+import { ShareStore, imageSources, validShareKey } from "./shares.ts";
 import {
   herdrPaneCwd,
   herdrPaneEnvironment,
@@ -51,6 +52,7 @@ const uploadDir = resolve(
 );
 const auth = new AuthStore(join(stateDir, "auth.json"), process.env.SHELT_SECURE_COOKIE === "true");
 await auth.load();
+const shares = new ShareStore(join(stateDir, "shares.json"));
 let passwdShell: string | null = null;
 if (typeof process.getuid === "function") {
   try {
@@ -179,6 +181,26 @@ async function previewFile(path: string | null): Promise<Response> {
   } catch {
     return response("Unable to read file", 404);
   }
+}
+
+async function readShared(path: string) {
+  const canonical = await realpath(path);
+  const type = previewType(canonical);
+  if (canonical !== path || !withinPreviewRoot(canonical, canonicalPreviewRoots) || !type) throw new Error("Unavailable");
+  const file = await open(canonical, "r");
+  try {
+    const metadata = await file.stat();
+    if (!metadata.isFile() || metadata.size > type.maxBytes) throw new Error("Unavailable");
+    const bytes = Buffer.alloc(type.maxBytes + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const result = await file.read(bytes, length, bytes.length - length, null);
+      if (!result.bytesRead) break;
+      length += result.bytesRead;
+    }
+    if (length > type.maxBytes) throw new Error("Unavailable");
+    return { bytes: bytes.subarray(0, length), type };
+  } finally { await file.close(); }
 }
 
 async function focusedPaneCwd(): Promise<string | null> {
@@ -343,6 +365,39 @@ const server = Bun.serve<SessionData>({
       })) return response("Upgrade failed", 400);
       return;
     }
+
+    if (url.pathname === "/api/shares" && ["GET", "POST", "DELETE"].includes(req.method)) {
+      if (req.method !== "GET" && !allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Forbidden", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      const requested = url.searchParams.get("path");
+      if (!requested || !isAbsolute(requested)) return response("Absolute path required", 400);
+      const path = await realpath(requested).catch(() => requested);
+      const headers = { "Cache-Control": "no-store" };
+      if (req.method === "GET") return json({ expiresAt: shares.status(path) }, 200, headers);
+      if (req.method === "POST") {
+        try { await readShared(path); } catch { return response("文件不可用", 404, headers); }
+      }
+      try {
+        if (req.method === "DELETE") { shares.revoke(path); return json({ ok: true }, 200, headers); }
+        return json(shares.create(path), 200, headers);
+      } catch { return response("无法保存分享状态", 500, headers); }
+    }
+
+    if (url.pathname.startsWith("/api/share/") && ["GET", "HEAD"].includes(req.method)) {
+      try {
+        const share = shares.resolve(url.pathname.slice("/api/share/".length));
+        if (!share) throw new Error("Unavailable");
+        let content = await readShared(share.path);
+        const source = url.searchParams.get("source");
+        if (source !== null) {
+          if (content.type.kind !== "markdown" || !imageSources(content.bytes.toString("utf8")).includes(source) || source.startsWith("#") || source.startsWith("//") || source.includes(":") || source.includes("\u0000")) throw new Error("Unavailable");
+          content = await readShared(await realpath(resolve(share.path, "..", source)));
+          if (content.type.kind !== "image" && content.type.kind !== "svg") throw new Error("Unavailable");
+        }
+        return previewResponse(content.bytes, content.type.contentType, content.type.kind);
+      } catch { return response("分享不存在、已过期或文件不可用", 404, { "Cache-Control": "no-store" }); }
+    }
+    if (url.pathname.startsWith("/share/") && req.method === "GET" && validShareKey(url.pathname.slice(7))) return staticFile("/preview");
 
     if (url.pathname === "/api/preview" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);
