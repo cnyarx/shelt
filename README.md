@@ -32,6 +32,12 @@ After signing in, open a document preview and use the top-right share button to 
 
 Only SHA-256 key hashes are persisted in the state directory's `shares.json`; links survive restarts. The original key cannot be recovered after leaving the page. Shared pages hide online speech and share management; HTML/SVG retain static sandboxed previews. Send links only to trusted recipients and use HTTPS. Revocation cannot remove copies that recipients have already saved.
 
+## Connection and password settings
+
+After signing in, a settings button sits at the top-right of the terminal page. In Herdr mode it manages a list of Herdr connections (the local default plus `herdr --remote` SSH targets with optional named sessions); clicking a row switches immediately: the server spawns `herdr --remote <target> [--session <name>]` as a plain argument array without a shell, so nothing needs to nest inside a running Herdr. The configuration persists privately in the state directory's `herdr-targets.json`, including the active selection across restarts. The list is hidden in shell mode.
+
+The same panel changes the login password: after verifying the current password it writes a new Argon2id hash, keeps the current browser signed in, and invalidates every other browser session.
+
 ## Requirements
 
 Build requirements:

@@ -1,4 +1,4 @@
-import { chmod, mkdir, open, readFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export const SESSION_COOKIE = "shelt_session";
@@ -135,6 +135,36 @@ export class AuthStore {
   async verify(password: string): Promise<boolean> {
     if (!this.passwordHash) return false;
     return Bun.password.verify(password, this.passwordHash);
+  }
+
+  async changePassword(password: string, keepCookieHeader: string | null): Promise<void> {
+    const passwordHash = await Bun.password.hash(password, {
+      algorithm: "argon2id",
+      memoryCost: 19456,
+      timeCost: 2,
+    });
+    const directory = dirname(this.filePath);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
+    const temporary = `${this.filePath}.${crypto.randomUUID()}.tmp`;
+    const file = await open(temporary, "wx", 0o600);
+    try {
+      const data: AuthFile = { version: 1, passwordHash, createdAt: new Date().toISOString() };
+      await file.writeFile(JSON.stringify(data) + "\n");
+      await file.sync();
+    } catch (error) {
+      await file.close().catch(() => {});
+      await rm(temporary, { force: true });
+      throw error;
+    }
+    await file.close();
+    await rename(temporary, this.filePath);
+    await chmod(this.filePath, 0o600);
+    this.passwordHash = passwordHash;
+    const keepToken = parseCookie(keepCookieHeader, SESSION_COOKIE);
+    for (const token of [...this.sessions.keys()]) {
+      if (token !== keepToken) this.sessions.delete(token);
+    }
   }
 
   private purgeExpired(now: number): void {

@@ -14,6 +14,7 @@ import {
 import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
 import { installVisibleViewportSizing } from "./mobile-viewport.ts";
 import { uploadFileNameHeader } from "./security.ts";
+import { setSettingsVisible, setupSettings } from "./settings-ui.ts";
 import { TerminalOutputPump } from "./terminal-output.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -42,6 +43,7 @@ let fit: FitAddon | undefined;
 let socket: WebSocket | undefined;
 let outputPump: TerminalOutputPump | undefined;
 let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+let switchingTarget = false;
 
 function fallbackCopy(text: string): boolean {
   const textarea = document.createElement("textarea");
@@ -107,6 +109,7 @@ function showAuth(required: boolean, message = "") {
   socket?.close();
   socket = undefined;
   mount.hidden = true;
+  setSettingsVisible(false);
   authMount.hidden = false;
   title.textContent = required ? "Set up Shelt" : "Unlock Shelt";
   description.textContent = required
@@ -152,6 +155,12 @@ function connect() {
     nextOutputPump.close();
     if (outputPump === nextOutputPump) outputPump = undefined;
     socket = undefined;
+    if (switchingTarget) {
+      switchingTarget = false;
+      currentTerminal.reset();
+      connect();
+      return;
+    }
     void authStatus().then((status) => {
       if (!status.authenticated) showAuth(status.setupRequired, "Your session expired. Enter your password again.");
       else terminal?.write("\r\n\x1b[31mShelt disconnected. Reload to reconnect.\x1b[0m\r\n");
@@ -202,6 +211,7 @@ function openLink(url: string) {
 function startTerminal() {
   authMount.hidden = true;
   mount.hidden = false;
+  setSettingsVisible(true);
   if (terminal) {
     fit?.fit();
     terminal.focus();
@@ -304,6 +314,7 @@ window.addEventListener("focus", () => {
 });
 
 installVisibleViewportSizing(scheduleResize);
+setupSettings({ setSwitching: (value) => { switchingTarget = value; } });
 
 void authStatus().then((status) => {
   if (status.authenticated) startTerminal();

@@ -9,6 +9,7 @@ import {
 } from "./auth.ts";
 import { embeddedAssets } from "./generated-assets.ts";
 import { ShareStore, imageSources, validShareKey } from "./shares.ts";
+import { LOCAL_TARGET_ID, TargetStore, targetError } from "./targets.ts";
 import {
   herdrPaneCwd,
   herdrPaneEnvironment,
@@ -53,6 +54,7 @@ const uploadDir = resolve(
 const auth = new AuthStore(join(stateDir, "auth.json"), process.env.SHELT_SECURE_COOKIE === "true");
 await auth.load();
 const shares = new ShareStore(join(stateDir, "shares.json"));
+const targets = new TargetStore(join(stateDir, "herdr-targets.json"));
 let passwdShell: string | null = null;
 if (typeof process.getuid === "function") {
   try {
@@ -135,6 +137,19 @@ async function authBody(req: Request): Promise<AuthRequest | null> {
   if (bytes.length === 0 || bytes.length > MAX_AUTH_BODY_BYTES) return null;
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as AuthRequest;
+  } catch {
+    return null;
+  }
+}
+
+async function jsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  const contentLength = Number(req.headers.get("content-length") || "0");
+  if (contentLength > MAX_AUTH_BODY_BYTES) return null;
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > MAX_AUTH_BODY_BYTES) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
   } catch {
     return null;
   }
@@ -347,6 +362,69 @@ const server = Bun.serve<SessionData>({
       return json({ ok: true }, 200, { "Set-Cookie": expiredSessionCookie(auth.secureCookie) });
     }
 
+    if (url.pathname === "/api/auth/password" && req.method === "POST") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      const body = await jsonBody(req);
+      if (!body) return json({ error: "Invalid request" }, 400);
+      const error = passwordError(body.newPassword);
+      if (error) return json({ error }, 400);
+      if (typeof body.currentPassword !== "string" || !(await auth.verify(body.currentPassword))) {
+        failedLogins = Math.min(failedLogins + 1, 6);
+        await Bun.sleep(Math.min(2000, 100 * 2 ** (failedLogins - 1)));
+        return json({ error: "当前密码不正确" }, 401);
+      }
+      failedLogins = 0;
+      await auth.changePassword(body.newPassword as string, req.headers.get("cookie"));
+      return json({ ok: true });
+    }
+
+    if (url.pathname === "/api/herdr/targets" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      return json({ mode: launch.mode, ...targets.list() }, 200, { "Cache-Control": "no-store" });
+    }
+
+    if (url.pathname === "/api/herdr/targets" && req.method === "POST") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      const body = await jsonBody(req);
+      if (!body) return json({ error: "Invalid request" }, 400);
+      const session = typeof body.session === "string" && body.session ? body.session : null;
+      const error = targetError(body.name, body.remote, session);
+      if (error) return json({ error }, 400);
+      if (targets.list().targets.length >= 16) return json({ error: "最多配置 16 个远程连接" }, 400);
+      return json(targets.create(body.name as string, body.remote as string, session));
+    }
+
+    const targetMatch = url.pathname.match(/^\/api\/herdr\/targets\/([a-f0-9]{8})$/);
+    if (targetMatch && (req.method === "PUT" || req.method === "DELETE")) {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      const id = targetMatch[1]!;
+      if (req.method === "DELETE") {
+        if (!targets.remove(id)) return response("Not found", 404);
+        return json({ ok: true });
+      }
+      const body = await jsonBody(req);
+      if (!body) return json({ error: "Invalid request" }, 400);
+      const session = typeof body.session === "string" && body.session ? body.session : null;
+      const error = targetError(body.name, body.remote, session);
+      if (error) return json({ error }, 400);
+      const updated = targets.update(id, body.name as string, body.remote as string, session);
+      if (!updated) return response("Not found", 404);
+      return json(updated);
+    }
+
+    if (url.pathname === "/api/herdr/active" && req.method === "POST") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      const body = await jsonBody(req);
+      if (!body || typeof body.id !== "string" || !targets.activate(body.id)) return json({ error: "Unknown target" }, 404);
+      activeProcess?.kill("SIGKILL");
+      activeSocket?.close(1012, "Switching Herdr target");
+      return json({ ok: true });
+    }
+
     if (url.pathname === "/ws") {
       if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
       if (!authenticated(req)) return response("Authentication required", 401);
@@ -470,7 +548,8 @@ const server = Bun.serve<SessionData>({
         rows: ws.data.rows,
         data: (_terminal, data) => queueTerminalOutput(ws, data),
       });
-      const child = Bun.spawn([launch.command, ...launch.args], {
+      const args = launch.mode === "herdr" ? targets.activeArgs() : launch.args;
+      const child = Bun.spawn([launch.command, ...args], {
         cwd: process.env.HOME || process.cwd(),
         env,
         terminal,

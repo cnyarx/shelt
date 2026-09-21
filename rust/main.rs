@@ -2,6 +2,7 @@ mod auth;
 mod edge_tts;
 mod share_routes;
 mod shares;
+mod targets;
 
 use auth::{password_error, AuthStore, MAX_AUTH_BODY_BYTES};
 use axum::{
@@ -12,7 +13,7 @@ use axum::{
     },
     http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::{any, get, post},
+    routing::{any, get, post, put},
     Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -82,6 +83,7 @@ struct AppState {
     active: Arc<Mutex<Option<ActiveSession>>>,
     auth: AuthStore,
     shares: shares::ShareStore,
+    targets: targets::TargetStore,
     failed_logins: Arc<Mutex<u32>>,
 }
 
@@ -391,6 +393,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         active: Arc::new(Mutex::new(None)),
         auth,
         shares: shares::ShareStore::load(state_dir().join("shares.json"))?,
+        targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
     let app = Router::new()
@@ -405,6 +408,26 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             post(auth_login_handler).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
         )
         .route("/api/auth/logout", post(auth_logout_handler))
+        .route(
+            "/api/auth/password",
+            post(auth_password_handler).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route(
+            "/api/herdr/targets",
+            get(targets_list_handler)
+                .post(targets_create_handler)
+                .layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route(
+            "/api/herdr/targets/{id}",
+            put(targets_update_handler)
+                .delete(targets_delete_handler)
+                .layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route(
+            "/api/herdr/active",
+            post(targets_active_handler).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
         .route(
             "/api/upload",
             post(upload_handler).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
@@ -567,6 +590,252 @@ async fn auth_logout_handler(State(state): State<AppState>, headers: HeaderMap) 
         secure(Json(serde_json::json!({"ok": true})).into_response()),
         state.auth.expired_cookie(),
     )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PasswordChangeRequest {
+    current_password: String,
+    new_password: String,
+}
+
+async fn auth_password_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<PasswordChangeRequest>,
+) -> Response {
+    if !allowed_host(&state, &headers) || !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    if let Some(error) = password_error(&request.new_password) {
+        return secure(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+                .into_response(),
+        );
+    }
+    if !state.auth.verify(&request.current_password) {
+        let delay = {
+            let mut failures = state.failed_logins.lock().unwrap();
+            *failures = (*failures + 1).min(6);
+            Duration::from_millis((100u64 * 2u64.pow(*failures - 1)).min(2000))
+        };
+        tokio::time::sleep(delay).await;
+        return secure(
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "当前密码不正确"})),
+            )
+                .into_response(),
+        );
+    }
+    *state.failed_logins.lock().unwrap() = 0;
+    match state
+        .auth
+        .change_password(&request.new_password, cookie_header(&headers))
+    {
+        Ok(()) => secure(Json(serde_json::json!({"ok": true})).into_response()),
+        Err(error) => secure(
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+struct TargetRequest {
+    name: String,
+    remote: String,
+    session: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ActiveTargetRequest {
+    id: String,
+}
+
+fn normalized_session(session: Option<String>) -> Option<String> {
+    session.filter(|value| !value.is_empty())
+}
+
+async fn targets_list_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let (active, targets) = state.targets.list();
+    let mut response = secure(
+        Json(serde_json::json!({
+            "mode": state.launch.mode,
+            "active": active,
+            "targets": targets,
+        }))
+        .into_response(),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+async fn targets_create_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<TargetRequest>,
+) -> Response {
+    if !allowed_host(&state, &headers) || !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let session = normalized_session(request.session);
+    if let Some(error) = targets::target_error(&request.name, &request.remote, session.as_deref()) {
+        return secure(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+                .into_response(),
+        );
+    }
+    if state.targets.list().1.len() >= 16 {
+        return secure(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "最多配置 16 个远程连接"})),
+            )
+                .into_response(),
+        );
+    }
+    match state
+        .targets
+        .create(&request.name, &request.remote, session)
+    {
+        Ok(entry) => secure(Json(entry).into_response()),
+        Err(error) => secure(
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "无法保存连接配置", "detail": error.to_string()})),
+            )
+                .into_response(),
+        ),
+    }
+}
+
+async fn targets_update_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(request): Json<TargetRequest>,
+) -> Response {
+    if !allowed_host(&state, &headers) || !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let session = normalized_session(request.session);
+    if id.len() != 8 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return secure((StatusCode::NOT_FOUND, "Not found").into_response());
+    }
+    if let Some(error) = targets::target_error(&request.name, &request.remote, session.as_deref()) {
+        return secure(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+                .into_response(),
+        );
+    }
+    match state
+        .targets
+        .update(&id, &request.name, &request.remote, session)
+    {
+        Ok(Some(entry)) => secure(Json(entry).into_response()),
+        Ok(None) => secure((StatusCode::NOT_FOUND, "Not found").into_response()),
+        Err(error) => secure(
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "无法保存连接配置", "detail": error.to_string()})),
+            )
+                .into_response(),
+        ),
+    }
+}
+
+async fn targets_delete_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    if !allowed_host(&state, &headers) || !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    match state.targets.remove(&id) {
+        Ok(true) => secure(Json(serde_json::json!({"ok": true})).into_response()),
+        Ok(false) => secure((StatusCode::NOT_FOUND, "Not found").into_response()),
+        Err(_) => secure(
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "无法保存连接配置"})),
+            )
+                .into_response(),
+        ),
+    }
+}
+
+async fn targets_active_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ActiveTargetRequest>,
+) -> Response {
+    if !allowed_host(&state, &headers) || !allowed_origin(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    match state.targets.activate(&request.id) {
+        Ok(true) => {}
+        Ok(false) => {
+            return secure(
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "Unknown target"})),
+                )
+                    .into_response(),
+            );
+        }
+        Err(_) => {
+            return secure(
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "无法保存连接配置"})),
+                )
+                    .into_response(),
+            );
+        }
+    }
+    let old = state.active.lock().unwrap().take();
+    if let Some(session) = old {
+        kill_group(session.pgid);
+        let _ = session.cancel.send(());
+    }
+    secure(Json(serde_json::json!({"ok": true})).into_response())
 }
 
 async fn health_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -966,7 +1235,15 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
         Ok(v) => v,
         Err(_) => return,
     };
+    let extra_args = if state.launch.mode == "herdr" {
+        state.targets.active_args()
+    } else {
+        state.launch.args.clone()
+    };
     let mut command = CommandBuilder::new(&state.launch.command);
+    for arg in &extra_args {
+        command.arg(arg);
+    }
     command.cwd(env::var_os("HOME").unwrap_or_else(|| ".".into()));
     for key in [
         "HERDR_ENV",
@@ -1458,6 +1735,10 @@ mod tests {
             .unwrap(),
             shares: shares::ShareStore::load(
                 env::temp_dir().join(format!("shelt-shares-origin-test-{}", std::process::id())),
+            )
+            .unwrap(),
+            targets: targets::TargetStore::load(
+                env::temp_dir().join(format!("shelt-targets-origin-test-{}", std::process::id())),
             )
             .unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),

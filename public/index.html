@@ -28,6 +28,33 @@
       </form>
     </main>
     <main id="terminal" aria-label="Shelt terminal" hidden></main>
+    <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="设置" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+    </button>
+    <aside id="settings-panel" aria-label="设置" hidden>
+      <section id="settings-herdr" hidden>
+        <h2>Herdr 连接</h2>
+        <p id="settings-hint">点击列表项即切换连接，当前终端会自动重连。</p>
+        <ul id="target-list"></ul>
+        <form id="target-form">
+          <input id="target-name" type="text" placeholder="名称" maxlength="40" required />
+          <input id="target-remote" type="text" placeholder="SSH 目标（user@host）" required />
+          <input id="target-session" type="text" placeholder="会话名（可选）" />
+          <button id="target-submit" type="submit">添加</button>
+          <button id="target-cancel" type="button" class="ghost" hidden>取消编辑</button>
+        </form>
+      </section>
+      <section>
+        <h2>登录密码</h2>
+        <form id="password-form">
+          <input id="current-password" type="password" placeholder="当前密码" autocomplete="current-password" required />
+          <input id="new-password" type="password" placeholder="新密码（至少 8 个字符）" autocomplete="new-password" minlength="8" maxlength="256" required />
+          <input id="confirm-new-password" type="password" placeholder="确认新密码" autocomplete="new-password" required />
+          <button id="password-submit" type="submit">修改密码</button>
+        </form>
+      </section>
+      <p id="settings-status" role="status" aria-live="polite"></p>
+    </aside>
     <script type="module" src="/client.js"></script>
   </body>
 </html>

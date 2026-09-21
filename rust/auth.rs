@@ -117,6 +117,61 @@ impl AuthStore {
             .is_ok()
     }
 
+    pub fn change_password(
+        &self,
+        password: &str,
+        keep_cookie: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let params = Params::new(19456, 2, 1, None)
+            .map_err(|error| format!("Invalid Argon2 parameters: {error}"))?;
+        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        let salt = SaltString::generate(&mut OsRng);
+        let password_hash = argon2
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|error| format!("Unable to hash password: {error}"))?
+            .to_string();
+        let parent = self.file_path.parent().unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)?;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+        let mut random = [0u8; 16];
+        OsRng.fill_bytes(&mut random);
+        let temporary = parent.join(format!(
+            ".auth-{}.tmp",
+            random
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        ));
+        let result = (|| {
+            let mut file = fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .mode(0o600)
+                .open(&temporary)?;
+            let data = AuthFile {
+                version: 1,
+                password_hash: password_hash.clone(),
+                created_at: unix_timestamp().to_string(),
+            };
+            file.write_all(serde_json::to_string(&data)?.as_bytes())?;
+            file.write_all(b"\n")?;
+            file.sync_all()?;
+            fs::rename(&temporary, &self.file_path)
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result?;
+        fs::set_permissions(&self.file_path, fs::Permissions::from_mode(0o600))?;
+        *self.password_hash.lock().unwrap() = Some(password_hash);
+        let keep_token = keep_cookie.and_then(|value| parse_cookie(value, SESSION_COOKIE));
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|token, _| Some(token.as_str()) == keep_token);
+        Ok(())
+    }
+
     pub fn create_session(&self, remember: bool) -> String {
         let mut bytes = [0u8; 32];
         OsRng.fill_bytes(&mut bytes);
@@ -264,6 +319,35 @@ mod tests {
         assert!(!store.authenticated(Some(&cookie)));
         assert!(store.expired_cookie().contains("Max-Age=0"));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn change_password_replaces_hash_and_keeps_only_current_session() {
+        let (store, directory) = temporary_auth();
+        assert!(store.setup("old password value").unwrap());
+        let current = store.create_session(false);
+        let other = store.create_session(true);
+        store
+            .change_password(
+                "new password value",
+                Some(&format!("{SESSION_COOKIE}={current}")),
+            )
+            .unwrap();
+        assert!(!store.verify("old password value"));
+        assert!(store.verify("new password value"));
+        assert!(store.authenticated(Some(&format!("{SESSION_COOKIE}={current}"))));
+        assert!(!store.authenticated(Some(&format!("{SESSION_COOKIE}={other}"))));
+        let file = directory.join("state/auth.json");
+        let content = fs::read_to_string(&file).unwrap();
+        assert!(content.contains("$argon2id$"));
+        assert!(!content.contains("new password value"));
+        assert_eq!(
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let reloaded = AuthStore::load(file, false).unwrap();
+        assert!(reloaded.verify("new password value"));
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
