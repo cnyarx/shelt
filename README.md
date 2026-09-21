@@ -1,7 +1,7 @@
 # Shelt
 
 <p align="center">
-  <img src="public/favicon.png" alt="Shelt logo" width="160" height="160" />
+  <img src="public/favicon.svg" alt="Shelt — Shetland Sheepdog" width="160" height="160" />
 </p>
 
 A minimal, self-contained web terminal for Herdr or your login shell, with Unicode-safe rendering and clipboard image paste.

@@ -13,9 +13,13 @@ describe("production bundle", () => {
     expect(html).toContain('sizes="16x16" href="/favicon-16.png"');
     expect(html).toContain('sizes="32x32" href="/favicon-32.png"');
     expect(html).toContain('sizes="64x64" href="/favicon-64.png"');
+    expect(html).toContain('type="image/svg+xml" sizes="any" href="/favicon.svg"');
+    expect(html).toContain('<img src="/favicon.svg"');
     expect(html).toContain('rel="apple-touch-icon" href="/favicon.png"');
     expect(html).toContain('id="auth-form"');
     expect(html).toContain('id="terminal"');
+    expect(html).toContain('id="sheltie-peek" aria-hidden="true"');
+    expect(html).toContain('<use href="/favicon.svg#sheltie-head"');
     expect(await Bun.file(join(root, "dist/client.css")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/client.js")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/favicon.png")).exists()).toBe(true);
@@ -32,11 +36,31 @@ describe("production bundle", () => {
     expect(styles).not.toContain("border-bottom: 2px solid transparent");
   });
 
+  test("ships the vector icon source and correctly sized PNG fallbacks", async () => {
+    const source = await readFile(join(root, "public/favicon.svg"), "utf8");
+    expect(await readFile(join(root, "dist/favicon.svg"), "utf8")).toBe(source);
+    expect(source).toContain('xmlns="http://www.w3.org/2000/svg"');
+    expect(source).toContain('viewBox="0 0 512 512"');
+    expect(source).toContain("Shetland Sheepdog");
+    expect(source).toContain('<g id="sheltie-head">');
+    expect(source).toContain("<path ");
+    expect(source).not.toMatch(/<(?:image|script|foreignObject)\b|\b(?:href|onload)=/i);
+    for (const size of [512, 64, 32, 16]) {
+      const file = size === 512 ? "favicon.png" : `favicon-${size}.png`;
+      const png = await readFile(join(root, "dist", file));
+      expect(png.equals(await readFile(join(root, "public", file)))).toBe(true);
+      expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      expect(png.readUInt32BE(16)).toBe(size);
+      expect(png.readUInt32BE(20)).toBe(size);
+    }
+  });
+
   test("ships preview assets without loading Mermaid in the terminal bundle", async () => {
     const html = await readFile(join(root, "dist/preview.html"), "utf8");
     const styles = await readFile(join(root, "dist/preview.css"), "utf8");
     const client = await readFile(join(root, "dist/client.js"), "utf8");
     const preview = await readFile(join(root, "dist/preview.js"), "utf8");
+    expect(html).toContain('type="image/svg+xml" sizes="any" href="/favicon.svg"');
     expect(html).toContain('id="preview"');
     expect(html).toContain('id="tts-toolbar" class="tts-toolbar collapsed"');
     expect(html).toContain('id="tts-toggle"');

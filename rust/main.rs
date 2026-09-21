@@ -54,6 +54,7 @@ const CLIENT_JS_GZ: &[u8] = include_bytes!("../dist/client.js.gz");
 const PREVIEW_HTML: &[u8] = include_bytes!("../dist/preview.html");
 const PREVIEW_CSS: &[u8] = include_bytes!("../dist/preview.css");
 const PREVIEW_JS_GZ: &[u8] = include_bytes!("../dist/preview.js.gz");
+const FAVICON_SVG: &[u8] = include_bytes!("../dist/favicon.svg");
 const FAVICON_PNG: &[u8] = include_bytes!("../dist/favicon.png");
 const FAVICON_16_PNG: &[u8] = include_bytes!("../dist/favicon-16.png");
 const FAVICON_32_PNG: &[u8] = include_bytes!("../dist/favicon-32.png");
@@ -1115,6 +1116,7 @@ async fn static_handler(State(state): State<AppState>, headers: HeaderMap, uri: 
             "text/javascript; charset=utf-8",
             Some("gzip"),
         ),
+        "/favicon.svg" => (FAVICON_SVG, "image/svg+xml", None),
         "/favicon.png" => (FAVICON_PNG, "image/png", None),
         "/favicon-16.png" => (FAVICON_16_PNG, "image/png", None),
         "/favicon-32.png" => (FAVICON_32_PNG, "image/png", None),

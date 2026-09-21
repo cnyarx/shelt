@@ -6,6 +6,7 @@ export const embeddedAssets = {
   "preview.html": "",
   "preview.css": "",
   "preview.js": "",
+  "favicon.svg": "",
   "favicon.png": "",
   "favicon-16.png": "",
   "favicon-32.png": "",

@@ -22,7 +22,7 @@ await cp(join(root, "public/index.html"), join(dist, "index.html"));
 await cp(join(root, "public/style.css"), join(dist, "style.css"));
 await cp(join(root, "public/preview.html"), join(dist, "preview.html"));
 await cp(join(root, "public/preview.css"), join(dist, "preview.css"));
-for (const favicon of ["favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]) {
+for (const favicon of ["favicon.svg", "favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]) {
   await cp(join(root, "public", favicon), join(dist, favicon));
 }
 for (const js of ["client.js", "preview.js"]) {

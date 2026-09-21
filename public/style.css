@@ -29,6 +29,20 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 #manual-copy textarea { display: block; width: 100%; min-height: 160px; box-sizing: border-box; margin-bottom: 12px; padding: 8px; resize: vertical; color: #fff; background: #000; font: 14px/1.4 ui-monospace, monospace; }
 #manual-copy button { padding: 6px 14px; color: #fff; border: 1px solid #888; border-radius: 4px; background: #333; cursor: pointer; }
 
+#sheltie-peek { position: fixed; z-index: 29; top: 11px; right: 14px; width: 34px; height: 34px; pointer-events: none; user-select: none; opacity: 0; visibility: hidden; transform-origin: 80% 85%; transform: translate(0, 2px) rotate(8deg) scale(.86); }
+#sheltie-peek svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+#sheltie-peek.is-peeking { visibility: visible; animation: sheltie-peek 3.6s ease-in-out; }
+@keyframes sheltie-peek {
+  0%, 100% { opacity: 0; transform: translate(0, 2px) rotate(8deg) scale(.86); }
+  17%, 25% { opacity: .88; transform: translate(-13px, -2px) rotate(-7deg) scale(.96); }
+  38%, 52% { opacity: .94; transform: translate(-24px, -1px) rotate(-12deg) scale(1); }
+  62%, 76% { opacity: .94; transform: translate(-22px, -2px) rotate(3deg) scale(1); }
+  86% { opacity: .7; transform: translate(-12px, 1px) rotate(8deg) scale(.93); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sheltie-peek, #sheltie-peek.is-peeking { display: none; animation: none; }
+}
+
 #settings-toggle { position: fixed; z-index: 30; top: 10px; right: 10px; display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgb(255 255 255 / 14%); border-radius: 50%; background: rgb(20 24 28 / 72%); color: #c9d1d9; cursor: pointer; backdrop-filter: blur(10px); }
 #settings-toggle:hover { color: #fff; border-color: rgb(255 255 255 / 30%); }
 #settings-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentcolor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

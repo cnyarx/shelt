@@ -28,6 +28,14 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
     const stop = async () => { child.kill(); await child.exited; };
     try {
       await ready();
+      const icon = await fetch(`${base}/favicon.svg`);
+      expect(icon.status).toBe(200);
+      expect(icon.headers.get("content-type")).toBe("image/svg+xml");
+      expect(icon.headers.get("cache-control")).toBe("no-cache");
+      expect(await icon.text()).toBe(await readFile(new URL("../public/favicon.svg", import.meta.url), "utf8"));
+      const iconHead = await fetch(`${base}/favicon.svg`, { method: "HEAD" });
+      expect(iconHead.status).toBe(200);
+      expect(await iconHead.text()).toBe("");
       const setup = await fetch(`${base}/api/auth/setup`, { method: "POST", headers: { Origin: base, "Content-Type": "application/json" }, body: JSON.stringify({ password: "share-test-password" }) });
       expect(setup.status).toBe(200);
       let cookie = setup.headers.get("set-cookie")!.split(";")[0]!;

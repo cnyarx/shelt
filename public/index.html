@@ -8,6 +8,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="stylesheet" href="/client.css" />
     <link rel="stylesheet" href="/style.css" />
@@ -15,7 +16,7 @@
   <body>
     <main id="auth" aria-labelledby="auth-title">
       <form id="auth-form" autocomplete="on">
-        <img src="/favicon.png" alt="" width="112" height="112" />
+        <img src="/favicon.svg" alt="" width="112" height="112" />
         <h1 id="auth-title">Unlock Shelt</h1>
         <p id="auth-description">Enter your password to open the terminal.</p>
         <label for="password">Password</label>
@@ -28,6 +29,9 @@
       </form>
     </main>
     <main id="terminal" aria-label="Shelt terminal" hidden></main>
+    <span id="sheltie-peek" aria-hidden="true">
+      <svg viewBox="0 0 512 512" focusable="false"><use href="/favicon.svg#sheltie-head" /></svg>
+    </span>
     <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="设置" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
     </button>

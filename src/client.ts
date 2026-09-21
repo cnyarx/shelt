@@ -15,6 +15,7 @@ import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
 import { installVisibleViewportSizing } from "./mobile-viewport.ts";
 import { uploadFileNameHeader } from "./security.ts";
 import { setSettingsVisible, setupSettings } from "./settings-ui.ts";
+import { installSheltiePeek } from "./sheltie-peek.ts";
 import { TerminalOutputPump } from "./terminal-output.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -315,6 +316,7 @@ window.addEventListener("focus", () => {
 
 installVisibleViewportSizing(scheduleResize);
 setupSettings({ setSwitching: (value) => { switchingTarget = value; } });
+installSheltiePeek(requiredElement("settings-toggle"), requiredElement("settings-panel"), requiredElement("sheltie-peek"));
 
 void authStatus().then((status) => {
   if (status.authenticated) startTerminal();

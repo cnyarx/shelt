@@ -294,14 +294,16 @@ async function resolveWikiLink(documentPath: string | null, target: string | nul
 
 async function staticFile(pathname: string): Promise<Response> {
   const file = pathname === "/" ? "index.html" : pathname === "/preview" ? "preview.html" : pathname.slice(1);
-  if (!new Set(["index.html", "style.css", "client.css", "client.js", "preview.html", "preview.css", "preview.js", "favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]).has(file)) return response("Not found", 404);
+  if (!new Set(["index.html", "style.css", "client.css", "client.js", "preview.html", "preview.css", "preview.js", "favicon.svg", "favicon.png", "favicon-16.png", "favicon-32.png", "favicon-64.png"]).has(file)) return response("Not found", 404);
   const type = file.endsWith(".html")
     ? "text/html; charset=utf-8"
     : file.endsWith(".css")
       ? "text/css; charset=utf-8"
-      : file.endsWith(".png")
-        ? "image/png"
-        : "text/javascript; charset=utf-8";
+      : file.endsWith(".svg")
+        ? "image/svg+xml"
+        : file.endsWith(".png")
+          ? "image/png"
+          : "text/javascript; charset=utf-8";
   const embedded = embeddedAssets[file as keyof typeof embeddedAssets];
   if (embedded.length > 0) return response(embedded, 200, { "Content-Type": type, "Cache-Control": "no-cache" });
   try {
