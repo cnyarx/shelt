@@ -2,6 +2,7 @@ import { renderMermaid } from "@vercel/beautiful-mermaid";
 import { escapeHtml, renderMarkdown } from "./markdown.ts";
 import { PreviewTtsController } from "./tts.ts";
 import { setupShare } from "./share-ui.ts";
+import { mountHtmlPreview } from "./html-preview.ts";
 
 function requiredElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -73,6 +74,10 @@ async function load(path: string): Promise<void> {
   }
   if (kind === "html" || kind === "svg") {
     mount.className = "native-preview";
+    if (kind === "html" && !shareKey) {
+      await mountHtmlPreview(mount, path, apiUrl, tts);
+      return;
+    }
     const frame = document.createElement("iframe");
     frame.src = apiUrl;
     frame.sandbox.value = "allow-same-origin";

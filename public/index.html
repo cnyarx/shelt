@@ -49,6 +49,13 @@
         </form>
       </section>
       <section>
+        <label class="settings-switch" for="html-interactive">
+          <span>HTML 交互预览</span>
+          <input id="html-interactive" type="checkbox" role="switch" aria-describedby="html-interactive-hint" checked />
+        </label>
+        <p id="html-interactive-hint" class="settings-note">允许页面运行 JavaScript、加载外部库和同目录资源。查看不可信文件时可关闭。仅保存在此浏览器；匿名分享始终为静态预览。</p>
+      </section>
+      <section>
         <h2>登录密码</h2>
         <form id="password-form">
           <input id="current-password" type="password" placeholder="当前密码" autocomplete="current-password" required />

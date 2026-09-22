@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HTML 交互预览</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p class="eyebrow">SHELT · HTML PREVIEW</p>
+    <h1>让页面动起来。</h1>
+    <p>同目录样式、ES 模块、数据文件与 Canvas，直接在隔离预览中运行。</p>
+    <section class="card">
+      <canvas id="chart" width="600" height="160" aria-label="本地数据图表"></canvas>
+      <button id="change" type="button">更新图表 <span id="count">0</span></button>
+    </section>
+    <ul>
+      <li>内联脚本 <strong id="inline">等待执行</strong></li>
+      <li>ES 模块与 JSON <strong id="module">等待加载</strong></li>
+      <li>父页面隔离 <strong id="parent">等待验证</strong></li>
+      <li>存储隔离 <strong id="storage">等待验证</strong></li>
+      <li>Shelt API 隔离 <strong id="api">等待验证</strong></li>
+      <li>终端隔离 <strong id="ws">等待验证</strong></li>
+    </ul>
+  </main>
+  <script>document.getElementById('inline').textContent = '已执行';</script>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>

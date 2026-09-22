@@ -1,3 +1,5 @@
+import { HTML_INTERACTIVE_KEY, htmlInteractiveEnabled, setHtmlInteractive } from "./preview-preferences.ts";
+
 type HerdrTarget = { id: string; name: string; remote: string; session: string | null };
 type TargetsResponse = { mode: string; active: string; targets: HerdrTarget[] };
 
@@ -21,6 +23,20 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
   const submit = element<HTMLButtonElement>("target-submit");
   const cancel = element<HTMLButtonElement>("target-cancel");
   const status = element("settings-status");
+  const interactivePreview = element<HTMLInputElement>("html-interactive");
+  interactivePreview.checked = htmlInteractiveEnabled();
+  interactivePreview.addEventListener("change", () => {
+    try {
+      setHtmlInteractive(interactivePreview.checked);
+      status.textContent = interactivePreview.checked ? "已开启 HTML 交互预览。" : "已切换为静态安全预览。";
+    } catch {
+      interactivePreview.checked = htmlInteractiveEnabled();
+      status.textContent = "浏览器不允许保存设置，请检查存储权限。";
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === HTML_INTERACTIVE_KEY || event.key === null) interactivePreview.checked = htmlInteractiveEnabled();
+  });
   const passwordForm = element<HTMLFormElement>("password-form");
   const currentPassword = element<HTMLInputElement>("current-password");
   const newPassword = element<HTMLInputElement>("new-password");

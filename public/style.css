@@ -49,7 +49,7 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 #settings-panel { position: fixed; z-index: 30; top: 52px; right: 10px; width: min(340px, calc(100vw - 20px)); max-height: calc(100% - 64px); overflow-y: auto; box-sizing: border-box; padding: 16px; border: 1px solid rgb(255 255 255 / 12%); border-radius: 14px; background: rgb(16 20 24 / 94%); box-shadow: 0 16px 48px rgb(0 0 0 / 50%); color: #e6edf3; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; backdrop-filter: blur(16px) saturate(150%); }
 #settings-panel h2 { margin: 0 0 4px; font-size: 13px; font-weight: 650; }
 #settings-hint { margin: 0 0 4px; color: #8b949e; font-size: 12px; }
-#settings-panel section + section { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / 8%); }
+#settings-panel section:not([hidden]) ~ section:not([hidden]) { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / 8%); }
 #target-list { display: grid; gap: 4px; margin: 8px 0; padding: 0; list-style: none; }
 .target-row { display: flex; align-items: center; gap: 4px; padding: 7px 9px; border-radius: 9px; cursor: pointer; }
 .target-row:hover { background: rgb(255 255 255 / 6%); }
@@ -67,4 +67,10 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 #settings-panel form button { padding: 8px 12px; border: 0; border-radius: 8px; background: #31bafd; color: #04202e; font: inherit; font-weight: 700; cursor: pointer; }
 #settings-panel form button.ghost { border: 1px solid #30363d; background: transparent; color: #8b949e; font-weight: 400; }
 #settings-panel form button:disabled { opacity: .55; cursor: wait; }
+.settings-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 650; cursor: pointer; }
+#settings-panel .settings-switch input { appearance: none; flex: 0 0 34px; width: 34px; height: 20px; padding: 2px; margin: 0; border-radius: 10px; background: #30363d; cursor: pointer; }
+.settings-switch input::before { content: ""; display: block; width: 14px; height: 14px; border-radius: 50%; background: #d6e1e8; }
+#settings-panel .settings-switch input:checked { background: #31bafd; border-color: #31bafd; }
+.settings-switch input:checked::before { transform: translateX(14px); background: #04202e; }
+.settings-note { margin: 8px 0 0; color: #8b949e; font-size: 12px; }
 #settings-status { min-height: 18px; margin: 10px 0 0; color: #9eb8c7; font-size: 12px; overflow-wrap: break-word; }

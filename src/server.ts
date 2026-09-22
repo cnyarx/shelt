@@ -10,6 +10,7 @@ import {
 import { embeddedAssets } from "./generated-assets.ts";
 import { ShareStore, imageSources, validShareKey } from "./shares.ts";
 import { LOCAL_TARGET_ID, TargetStore, targetError } from "./targets.ts";
+import { INTERACTIVE_CSP, InteractivePreviews } from "./interactive-preview.ts";
 import {
   herdrPaneCwd,
   herdrPaneEnvironment,
@@ -55,6 +56,7 @@ const auth = new AuthStore(join(stateDir, "auth.json"), process.env.SHELT_SECURE
 await auth.load();
 const shares = new ShareStore(join(stateDir, "shares.json"));
 const targets = new TargetStore(join(stateDir, "herdr-targets.json"));
+const interactivePreviews = new InteractivePreviews(auth, canonicalPreviewRoots, stateDir);
 let passwdShell: string | null = null;
 if (typeof process.getuid === "function") {
   try {
@@ -321,6 +323,34 @@ const server = Bun.serve<SessionData>({
     const url = new URL(req.url);
     const requestHost = (req.headers.get("host") || "").toLowerCase();
     if (!allowedHost(requestHost, [...publicHosts])) return response("Forbidden host", 403);
+    if ((url.pathname.startsWith("/api/") || url.pathname === "/ws") && !url.pathname.startsWith("/api/preview-content/") && (req.headers.get("origin") === "null" || req.headers.get("sec-fetch-site") === "cross-site")) return response("Cross-origin rejected", 403);
+
+    if (url.pathname === "/api/preview-session" && req.method === "POST") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      const body = await jsonBody(req);
+      if (!body || typeof body.path !== "string") return response("Absolute HTML path required", 400);
+      const grant = await interactivePreviews.create(body.path, req.headers.get("cookie"));
+      return grant ? json(grant, 200, { "Cache-Control": "no-store" }) : response("HTML preview unavailable", 404);
+    }
+    const revokePreview = url.pathname.match(/^\/api\/preview-session\/([a-f0-9]{64})$/);
+    if (revokePreview && req.method === "DELETE") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      interactivePreviews.revoke(revokePreview[1]!, req.headers.get("cookie"));
+      return response(null, 204);
+    }
+    const previewResource = url.pathname.match(/^\/api\/preview-content\/([a-f0-9]{64})\/(.+)$/);
+    if (previewResource && ["GET", "HEAD"].includes(req.method)) {
+      let resource: string;
+      try { resource = decodeURIComponent(previewResource[2]!); } catch { return response("Invalid resource path", 400); }
+      const result = await interactivePreviews.read(previewResource[1]!, resource);
+      if (!result) return response("预览资源不可用，请刷新预览页", 404, { "Cache-Control": "no-store" });
+      return response(result.bytes, 200, {
+        "Content-Type": result.contentType, "Cache-Control": "no-store", "Content-Disposition": "inline",
+        "Content-Security-Policy": INTERACTIVE_CSP, "Access-Control-Allow-Origin": "*",
+      });
+    }
 
     if (url.pathname === "/api/auth/status" && req.method === "GET") {
       return json({ setupRequired: auth.setupRequired(), authenticated: authenticated(req) });

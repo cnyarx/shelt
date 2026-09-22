@@ -1,0 +1,12 @@
+* { box-sizing: border-box; }
+body { margin: 0; padding: 48px 24px; color: #18362d; background: #f1f6f2; font: 16px/1.6 system-ui, sans-serif; }
+main { max-width: 680px; margin: auto; }
+.eyebrow { color: #57846b; font-size: 12px; letter-spacing: .16em; }
+h1 { margin: 12px 0; font-size: clamp(30px, 6vw, 44px); letter-spacing: -.04em; }
+p { color: #597467; }
+.card { padding: 24px; background: white; border-radius: 18px; box-shadow: 0 8px 40px #285a3e0d; }
+canvas { display: block; max-width: 100%; height: auto; }
+button { margin-top: 12px; padding: 10px 20px; border: none; border-radius: 8px; color: white; background: #276545; font: inherit; cursor: pointer; }
+ul { padding: 0; list-style: none; }
+li { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #dbe8dd; }
+strong { font-weight: 500; color: #23774b; }

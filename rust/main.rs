@@ -1,5 +1,6 @@
 mod auth;
 mod edge_tts;
+mod interactive_preview;
 mod share_routes;
 mod shares;
 mod targets;
@@ -85,6 +86,7 @@ struct AppState {
     auth: AuthStore,
     shares: shares::ShareStore,
     targets: targets::TargetStore,
+    interactive_previews: interactive_preview::InteractivePreviews,
     failed_logins: Arc<Mutex<u32>>,
 }
 
@@ -395,6 +397,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         auth,
         shares: shares::ShareStore::load(state_dir().join("shares.json"))?,
         targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
+        interactive_previews: interactive_preview::InteractivePreviews::default(),
         failed_logins: Arc::new(Mutex::new(0)),
     };
     let app = Router::new()
@@ -435,6 +438,18 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/preview", get(preview_handler))
         .route(
+            "/api/preview-session",
+            post(interactive_preview::create).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route(
+            "/api/preview-session/{token}",
+            axum::routing::delete(interactive_preview::revoke),
+        )
+        .route(
+            "/api/preview-content/{token}/{*resource}",
+            get(interactive_preview::content),
+        )
+        .route(
             "/api/shares",
             get(share_routes::manage)
                 .post(share_routes::manage)
@@ -452,6 +467,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/resolve-wikilink", get(resolve_wikilink_handler))
         .route("/health", get(health_handler))
         .fallback(static_handler)
+        .layer(axum::middleware::from_fn(isolate_preview_requests))
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     println!(
@@ -1399,6 +1415,27 @@ fn secure(mut response: Response) -> Response {
     headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     response
 }
+async fn isolate_preview_requests(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = request.uri().path();
+    if (path.starts_with("/api/") || path == "/ws")
+        && !path.starts_with("/api/preview-content/")
+        && (request
+            .headers()
+            .get(header::ORIGIN)
+            .is_some_and(|value| value == "null")
+            || request
+                .headers()
+                .get("sec-fetch-site")
+                .is_some_and(|value| value == "cross-site"))
+    {
+        return secure((StatusCode::FORBIDDEN, "Cross-origin rejected").into_response());
+    }
+    next.run(request).await
+}
+
 fn allowed_host(state: &AppState, headers: &HeaderMap) -> bool {
     headers
         .get(header::HOST)
@@ -1743,6 +1780,7 @@ mod tests {
                 env::temp_dir().join(format!("shelt-targets-origin-test-{}", std::process::id())),
             )
             .unwrap(),
+            interactive_previews: interactive_preview::InteractivePreviews::default(),
             failed_logins: Arc::new(Mutex::new(0)),
         };
         let mut headers = HeaderMap::new();

@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 const source = new Bun.Transpiler({ loader: "ts" }).transformSync(
+  readFileSync(new URL("../src/preview-preferences.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/settings-ui.ts", import.meta.url), "utf8")
+    .replace(/^import .*preview-preferences.*\n/, "")
     .replace("export function setupSettings", "function setupSettings")
     .replace("export function setSettingsVisible", "function setSettingsVisible"),
 );
@@ -37,7 +39,7 @@ function fakeElement(tag = "div"): any {
 const IDS = [
   "settings-toggle", "settings-panel", "settings-herdr", "target-list", "target-form",
   "target-name", "target-remote", "target-session", "target-submit", "target-cancel",
-  "settings-status", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit",
+  "settings-status", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
 ];
 
 function flush(times = 6) {
@@ -59,9 +61,13 @@ test("settings panel manages targets, switches connection and changes password",
   };
   const calls: { url: string; method: string; body?: any }[] = [];
   const switching: boolean[] = [];
+  const preferences = new Map<string, string>();
+  let storageChanged: (event: { key: string }) => void = () => {};
   let confirmations = 0;
   const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
   runInNewContext(`${source}\nsetSettingsVisible(true);\nsetupSettings(options);`, {
+    localStorage: { getItem: (key: string) => preferences.get(key) ?? null, setItem: (key: string, value: string) => preferences.set(key, value) },
+    window: { addEventListener: (_type: string, handler: typeof storageChanged) => { storageChanged = handler; } },
     document: {
       getElementById: (id: string) => elements.get(id) ?? null,
       createElement: (tag: string) => fakeElement(tag),
@@ -98,6 +104,13 @@ test("settings panel manages targets, switches connection and changes password",
   });
   const get = (id: string) => elements.get(id);
 
+  expect(get("html-interactive").checked).toBe(true);
+  get("html-interactive").checked = false;
+  get("html-interactive").handlers.change[0]();
+  expect(preferences.get("shelt-html-interactive")).toBe("false");
+  preferences.set("shelt-html-interactive", "true");
+  storageChanged({ key: "shelt-html-interactive" });
+  expect(get("html-interactive").checked).toBe(true);
   expect(get("settings-toggle").hidden).toBe(false);
   get("settings-toggle").handlers.click[0]();
   await flush();

@@ -18,7 +18,7 @@ Shelt exposes a real PTY in the browser through a single xterm.js surface. When 
 - Keyboard, mouse, resize, and text paste support over a real PTY
 - Clipboard image paste with `Ctrl+V` / `Cmd+V`: saves the image privately and inserts its absolute path
 - OSC 52 clipboard copy support with size and format validation
-- Clickable absolute paths for read-only Markdown, static HTML, SVG, and image previews
+- Clickable absolute paths for Markdown, interactive HTML, SVG, and image previews
 - Lightweight Mermaid rendering in Markdown for flowcharts, sequence, class, state, and ER diagrams
 - One self-contained native executable with embedded browser assets
 - Background daemon lifecycle commands: `start`, `stop`, `restart`, `status`, `url`, and `logs`
@@ -37,6 +37,14 @@ Only SHA-256 key hashes are persisted in the state directory's `shares.json`; li
 After signing in, a settings button sits at the top-right of the terminal page. In Herdr mode it manages a list of Herdr connections (the local default plus `herdr --remote` SSH targets with optional named sessions); clicking a row switches immediately: the server spawns `herdr --remote <target> [--session <name>]` as a plain argument array without a shell, so nothing needs to nest inside a running Herdr. The configuration persists privately in the state directory's `herdr-targets.json`, including the active selection across restarts. The list is hidden in shell mode.
 
 The same panel changes the login password: after verifying the current password it writes a new Argon2id hash, keeps the current browser signed in, and invalidates every other browser session.
+
+## Interactive HTML previews
+
+The settings panel's HTML interactive preview switch is on by default and saved per browser. Changes immediately reload open HTML previews in that browser. Interactive mode supports inline JavaScript, event handlers, ES modules, Canvas/WebGL, external scripts/styles and relative JS, CSS, images, fonts, JSON and other web assets within the HTML document's directory and subdirectories. Parent directories, hidden files and Shelt state files are excluded; directory listings are not available. Keep the document and its assets in a dedicated directory without private data.
+
+Scripts run in an opaque-origin sandbox without access to the Shelt parent document, login storage, terminal or settings. Random temporary resource capabilities are tied to the current login session and last at most 24 hours. Switching to static mode or normally closing the preview requests revocation; logout or service restart invalidates them. After an abrupt browser exit, a capability may remain valid until its session or lifetime expires. Do not use these temporary URLs as share links. External network access remains subject to reachability, CORS and mixed-content browser rules.
+
+Turning the switch off restores the existing static sandbox with scripts disabled. Anonymous shares, direct file APIs and standalone SVG previews always remain static. Interactive mode displays a notice that speech is unavailable; switch to static mode to restore speech. Full websites requiring localStorage, Service Workers, top navigation, popups or backend services are not guaranteed to work. Root-relative URLs such as `/assets/...` do not map to the filesystem; use relative asset paths instead.
 
 ## Requirements
 
