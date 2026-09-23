@@ -10,7 +10,7 @@ function setup(random = 0.5, reduced = false) {
   const toggle = Object.assign(new EventTarget(), { hidden: true });
   const panel = Object.assign(new EventTarget(), { hidden: true });
   const classes = new Set<string>();
-  const peek = Object.assign(new EventTarget(), { classList: { add: (name: string) => classes.add(name), remove: (name: string) => classes.delete(name), contains: (name: string) => classes.has(name) } });
+  const peek = Object.assign(new EventTarget(), { classList: { add: (name: string) => classes.add(name), remove: (...names: string[]) => names.forEach(name => classes.delete(name)), contains: (name: string) => classes.has(name) } });
   const document = Object.assign(new EventTarget(), { hidden: false });
   const media = Object.assign(new EventTarget(), { matches: reduced });
   const window = Object.assign(new EventTarget(), { matchMedia: () => media });
@@ -117,23 +117,48 @@ test("Sheltie peeks once when the settings button is hovered and re-arms afterwa
   expect(ui.timers.size).toBe(0);
 });
 
-test("Sheltie respects reduced motion at startup and page lifecycle without catching up", () => {
+test("reduced motion suppresses automatic peeks but permits an animated hover", () => {
   const ui = setup(0.5, true);
   ui.toggle.hidden = false;
   ui.changed();
   expect(ui.timers.size).toBe(0);
+  expect(ui.peeking()).toBe(false);
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(true);
+  expect(ui.timers.size).toBe(0);
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(true);
+  ui.peek.dispatchEvent(new Event("animationend"));
+  expect(ui.peeking()).toBe(false);
+  expect(ui.timers.size).toBe(0);
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(true);
+  ui.panel.hidden = false;
+  ui.changed();
+  expect(ui.peeking()).toBe(false);
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(false);
+  ui.panel.hidden = true;
+  ui.changed();
+  expect(ui.peeking()).toBe(false);
+  ui.window.dispatchEvent(new Event("pagehide"));
+  expect(ui.timers.size).toBe(0);
+});
+
+test("changing motion preference never starts an automatic peek in reduced mode", () => {
+  const ui = setup(0.5, false);
+  ui.toggle.hidden = false;
+  ui.changed();
+  expect(ui.timers.size).toBe(1);
+  ui.media.matches = true;
+  ui.media.dispatchEvent(new Event("change"));
+  expect(ui.timers.size).toBe(0);
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(true);
   ui.media.matches = false;
   ui.media.dispatchEvent(new Event("change"));
-  expect(ui.timers.size).toBe(1);
-  ui.window.dispatchEvent(new Event("pagehide"));
-  expect(ui.timers.size).toBe(0);
-  ui.window.dispatchEvent(new Event("pageshow"));
   expect(ui.peeking()).toBe(false);
   expect(ui.timers.size).toBe(1);
-  ui.fire();
-  ui.window.dispatchEvent(new Event("pagehide"));
-  expect(ui.peeking()).toBe(false);
-  expect(ui.timers.size).toBe(0);
 });
 
 test("Sheltie rechecks eligibility before a delayed timer fires", () => {

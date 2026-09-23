@@ -1,7 +1,8 @@
 export function installSheltiePeek(toggle: HTMLElement, panel: HTMLElement, peek: HTMLElement): void {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const ready = () => !toggle.hidden && panel.hidden && !document.hidden && !reducedMotion.matches && !peek.classList.contains("is-peeking");
+  const available = () => !toggle.hidden && panel.hidden && !document.hidden;
+  const ready = () => available() && !reducedMotion.matches && !peek.classList.contains("is-peeking");
 
   const hide = () => {
     clearTimeout(timer);
@@ -17,7 +18,7 @@ export function installSheltiePeek(toggle: HTMLElement, panel: HTMLElement, peek
     }, 180_000 + Math.random() * 120_000);
   };
   const play = () => {
-    if (!ready()) return;
+    if (!available() || peek.classList.contains("is-peeking")) return;
     clearTimeout(timer);
     timer = undefined;
     peek.classList.add("is-peeking");

@@ -39,10 +39,6 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
   62%, 76% { opacity: .94; transform: translate(-22px, -2px) rotate(3deg) scale(1); }
   86% { opacity: .7; transform: translate(-12px, 1px) rotate(8deg) scale(.93); }
 }
-@media (prefers-reduced-motion: reduce) {
-  #sheltie-peek, #sheltie-peek.is-peeking { display: none; animation: none; }
-}
-
 #settings-toggle { position: fixed; z-index: 30; top: 10px; right: 10px; display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgb(255 255 255 / 14%); border-radius: 50%; background: rgb(20 24 28 / 72%); color: #c9d1d9; cursor: pointer; backdrop-filter: blur(10px); }
 #settings-toggle:hover { color: #fff; border-color: rgb(255 255 255 / 30%); }
 #settings-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentcolor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
