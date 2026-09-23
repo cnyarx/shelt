@@ -10,34 +10,35 @@
     <link rel="stylesheet" href="/preview.css" />
   </head>
   <body>
-    <aside id="share-toolbar" class="share-toolbar" aria-label="文档分享" hidden>
-      <button id="share-toggle" type="button" aria-expanded="false" aria-controls="share-panel">分享</button>
+    <div id="preview-language" class="preview-language"><select id="ui-language" aria-label="界面语言" data-i18n-aria-label="language"><option value="zh-CN">中文</option><option value="en">English</option></select></div>
+    <aside id="share-toolbar" class="share-toolbar" aria-label="文档分享" data-i18n-aria-label="sharedDocument" hidden>
+      <button id="share-toggle" type="button" aria-expanded="false" aria-controls="share-panel" data-i18n="share">分享</button>
       <section id="share-panel" hidden>
-        <strong>只读分享</strong>
+        <strong data-i18n="readOnlyShare">只读分享</strong>
         <p id="share-status" role="status" aria-live="polite">正在查询分享状态…</p>
-        <input id="share-url" type="text" readonly aria-label="分享链接" hidden>
+        <input id="share-url" type="text" readonly aria-label="分享链接" data-i18n-aria-label="shareLink" hidden>
         <button id="share-create" type="button">创建并复制链接</button>
-        <button id="share-revoke" type="button" disabled>撤销分享</button>
+        <button id="share-revoke" type="button" data-i18n="revokeShare" disabled>撤销分享</button>
       </section>
     </aside>
-    <aside id="tts-toolbar" class="tts-toolbar collapsed" aria-label="语音朗读工具栏">
+    <aside id="tts-toolbar" class="tts-toolbar collapsed" aria-label="语音朗读工具栏" data-i18n-aria-label="speechToolbar">
       <button id="tts-toggle" class="tts-toggle" type="button" aria-expanded="false" aria-controls="tts-controls" aria-label="展开语音朗读工具栏">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>
       </button>
       <div id="tts-controls" class="tts-controls">
-        <button id="tts-start" type="button" disabled>从头朗读</button>
+        <button id="tts-start" type="button" data-i18n="readStart" disabled>从头朗读</button>
         <button id="tts-target" type="button" aria-pressed="false">定位朗读</button>
         <button id="tts-pause" type="button" disabled>暂停</button>
-        <button id="tts-stop" type="button" disabled>停止</button>
-        <label>语音
+        <button id="tts-stop" type="button" data-i18n="stop" disabled>停止</button>
+        <label><span data-i18n="voice">语音</span>
           <select id="tts-voice">
-            <option value="zh-CN-XiaoxiaoNeural">晓晓（中文女声）</option>
-            <option value="zh-CN-YunxiNeural">云希（中文男声）</option>
-            <option value="zh-CN-XiaoyiNeural">晓伊（中文女声）</option>
-            <option value="en-US-EmmaMultilingualNeural">Emma（多语言女声）</option>
+            <option value="zh-CN-XiaoxiaoNeural" data-i18n="voiceXiaoxiao">晓晓（中文女声）</option>
+            <option value="zh-CN-YunxiNeural" data-i18n="voiceYunxi">云希（中文男声）</option>
+            <option value="zh-CN-XiaoyiNeural" data-i18n="voiceXiaoyi">晓伊（中文女声）</option>
+            <option value="en-US-EmmaMultilingualNeural" data-i18n="voiceEmma">Emma（多语言女声）</option>
           </select>
         </label>
-        <label>语速
+        <label><span data-i18n="rate">语速</span>
           <select id="tts-rate">
             <option value="0.75">0.75x</option>
             <option value="1" selected>1x</option>
@@ -48,11 +49,11 @@
         <span id="tts-status" role="status" aria-live="polite">正在加载预览…</span>
       </div>
     </aside>
-    <nav id="toc-panel" class="toc-panel" aria-label="文档目录" hidden>
-      <button id="toc-toggle" class="toc-toggle" type="button" aria-expanded="true" aria-controls="toc-list" aria-label="切换目录导航">
+    <nav id="toc-panel" class="toc-panel" aria-label="文档目录" data-i18n-aria-label="toc" hidden>
+      <button id="toc-toggle" class="toc-toggle" type="button" aria-expanded="true" aria-controls="toc-list" aria-label="切换目录导航" data-i18n-aria-label="toggleToc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h14v2H3v-2zm0 5h18v2H3v-2z"/></svg>
       </button>
-      <div id="toc-list" class="toc-list" role="region" aria-label="文档目录树"></div>
+      <div id="toc-list" class="toc-list" role="region" aria-label="文档目录树" data-i18n-aria-label="tocTree"></div>
     </nav>
     <main id="preview" aria-live="polite">Loading preview…</main>
     <script type="module" src="/preview.js"></script>

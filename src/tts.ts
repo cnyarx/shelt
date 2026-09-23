@@ -1,3 +1,5 @@
+import { onLanguageChange, t, type MessageKey } from "./i18n.ts";
+
 const READABLE_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,figcaption,th,td";
 export const MAX_TTS_TEXT_CHARS = 1000;
 
@@ -75,6 +77,7 @@ export class PreviewTtsController {
   private state: ReaderState = "idle";
   private targeting = false;
   private targetingCleanup: (() => void) | undefined;
+  private statusKey: MessageKey = "loadingPreview";
 
   constructor() {
     this.voiceSelect.value = localStorage.getItem("shelt-tts-voice") || "zh-CN-XiaoxiaoNeural";
@@ -91,21 +94,31 @@ export class PreviewTtsController {
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && this.targeting) this.setTargeting(false);
     });
+    onLanguageChange(() => this.renderText());
+    this.renderText();
+  }
+
+  private renderText(): void {
+    this.toggleButton.setAttribute("aria-label", t(this.toolbar.classList.contains("collapsed") ? "expandSpeech" : "collapseSpeech"));
+    this.targetButton.textContent = t(this.targeting ? "exitTargeting" : "targetRead");
+    this.pauseButton.textContent = t(this.state === "paused" ? "resume" : "pause");
+    this.status.textContent = t(this.statusKey);
+    this.status.title = this.status.textContent;
   }
 
   private setExpanded(expanded: boolean): void {
     this.toolbar.classList.toggle("collapsed", !expanded);
     this.toggleButton.setAttribute("aria-expanded", String(expanded));
-    this.toggleButton.setAttribute("aria-label", expanded ? "收起语音朗读工具栏" : "展开语音朗读工具栏");
+    this.renderText();
   }
 
-  setDocument(root: ParentNode | null, frame?: HTMLIFrameElement, emptyMessage = "此预览没有可朗读内容"): void {
+  setDocument(root: ParentNode | null, frame?: HTMLIFrameElement, emptyMessage: MessageKey = "noReadable"): void {
     this.stop();
     if (root?.nodeType === Node.DOCUMENT_NODE) this.installFrameHighlightStyle(root as Document);
     this.blocks = root ? collectReadableBlocks(root, frame) : [];
     this.startButton.disabled = this.blocks.length === 0;
     this.targetButton.disabled = this.blocks.length === 0;
-    this.setStatus(this.blocks.length ? "就绪" : emptyMessage);
+    this.setStatus(this.blocks.length ? "ready" : emptyMessage);
     this.installTargeting(root);
   }
 
@@ -122,7 +135,7 @@ export class PreviewTtsController {
     const handler = (event: Event) => {
       if (!this.targeting) return;
       const eventElement = event.target instanceof Element ? event.target : null;
-      if (eventElement?.closest("#tts-toolbar")) return;
+      if (eventElement?.closest("#tts-toolbar, #preview-language")) return;
       const target = eventElement?.closest<HTMLElement>(READABLE_SELECTOR) ?? null;
       const block = target ? this.blocks.find((item) => item.element === target) : undefined;
       if (!block) { this.setTargeting(false); return; }
@@ -138,8 +151,7 @@ export class PreviewTtsController {
     this.targeting = enabled && this.blocks.length > 0;
     this.targetButton.setAttribute("aria-pressed", String(this.targeting));
     this.targetButton.classList.toggle("active", this.targeting);
-    this.targetButton.textContent = this.targeting ? "退出定位" : "定位朗读";
-    this.setStatus(this.targeting ? "请点击要开始朗读的内容" : this.state === "idle" ? "就绪" : this.status.textContent || "就绪");
+    this.setStatus(this.targeting ? "targetHint" : this.state === "idle" ? "ready" : this.statusKey);
   }
 
   private async speakFrom(index: number): Promise<void> {
@@ -156,7 +168,7 @@ export class PreviewTtsController {
           chunks.push({ text, element: block.element });
         }
       }
-      if (chunks.length === 0) { this.setState("idle", "朗读完成"); return; }
+      if (chunks.length === 0) { this.setState("idle", "speechComplete"); return; }
 
       let nextAudio: Promise<string | null> = this.fetchTtsAudio(chunks[0]!.text);
 
@@ -172,19 +184,19 @@ export class PreviewTtsController {
         }
 
         if (!url) throw new Error("Online TTS unavailable");
-        this.setState("speaking", "正在使用在线神经语音朗读");
+        this.setState("speaking", "speaking");
         await this.playAudio(url, token);
         URL.revokeObjectURL(url);
       }
 
       if (token === this.queueToken) {
         this.clearHighlight();
-        this.setState("idle", "朗读完成");
+        this.setState("idle", "speechComplete");
       }
     } catch {
       if (token === this.queueToken) {
         this.clearHighlight();
-        this.setState("idle", "语音朗读不可用");
+        this.setState("idle", "speechUnavailable");
       }
     } finally {
       if (this.abortController && token === this.queueToken) {
@@ -236,11 +248,11 @@ export class PreviewTtsController {
   private togglePause(): void {
     if (this.state === "paused") {
       void this.audio?.play();
-      this.setState("speaking", "继续朗读");
+      this.setState("speaking", "speechResumed");
       return;
     }
     this.audio?.pause();
-    this.setState("paused", "已暂停");
+    this.setState("paused", "paused");
   }
 
   stop(): void {
@@ -252,7 +264,7 @@ export class PreviewTtsController {
     this.audio?.pause();
     this.audio = undefined;
     this.clearHighlight();
-    this.setState("idle", this.blocks.length ? "就绪" : "正在加载预览…");
+    this.setState("idle", this.blocks.length ? "ready" : "loadingPreview");
   }
 
   private highlight(element: HTMLElement): void {
@@ -267,15 +279,15 @@ export class PreviewTtsController {
     this.highlighted = undefined;
   }
 
-  private setState(state: ReaderState, message: string): void {
+  private setState(state: ReaderState, message: MessageKey): void {
     this.state = state;
     this.pauseButton.disabled = state !== "speaking" && state !== "paused";
-    this.pauseButton.textContent = state === "paused" ? "继续" : "暂停";
     this.stopButton.disabled = state === "idle";
     this.setStatus(message);
   }
 
-  private setStatus(message: string): void {
-    this.status.textContent = message;
+  private setStatus(message: MessageKey): void {
+    this.statusKey = message;
+    this.renderText();
   }
 }

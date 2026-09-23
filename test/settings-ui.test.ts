@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 const source = new Bun.Transpiler({ loader: "ts" }).transformSync(
+  readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/preview-preferences.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/settings-ui.ts", import.meta.url), "utf8")
-    .replace(/^import .*preview-preferences.*\n/, "")
+    .replace(/^import .*\n/gm, "")
     .replace("export function setupSettings", "function setupSettings")
     .replace("export function setSettingsVisible", "function setSettingsVisible"),
 );
@@ -40,6 +41,7 @@ const IDS = [
   "settings-toggle", "settings-panel", "settings-herdr", "target-list", "target-form",
   "target-name", "target-remote", "target-session", "target-submit", "target-cancel",
   "settings-status", "settings-version", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
+  "ui-language", "target-add", "password-toggle", "password-cancel",
 ];
 
 function flush(times = 6) {
@@ -62,13 +64,16 @@ test("settings panel manages targets, switches connection and changes password",
   const calls: { url: string; method: string; body?: any }[] = [];
   const switching: boolean[] = [];
   const preferences = new Map<string, string>();
-  let storageChanged: (event: { key: string }) => void = () => {};
+  const storageHandlers: ((event: { key: string | null }) => void)[] = [];
+  const storageChanged = (event: { key: string | null }) => storageHandlers.forEach(handler => handler(event));
   let confirmations = 0;
   const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
   runInNewContext(`${source}\nsetSettingsVisible(true);\nsetupSettings(options);`, {
     localStorage: { getItem: (key: string) => preferences.get(key) ?? null, setItem: (key: string, value: string) => preferences.set(key, value) },
-    window: { addEventListener: (_type: string, handler: typeof storageChanged) => { storageChanged = handler; } },
+    window: { addEventListener: (_type: string, handler: typeof storageChanged) => { storageHandlers.push(handler); } },
     document: {
+      documentElement: { lang: "" },
+      querySelectorAll: () => [],
       getElementById: (id: string) => elements.get(id) ?? null,
       createElement: (tag: string) => fakeElement(tag),
       addEventListener() {},
@@ -118,6 +123,25 @@ test("settings panel manages targets, switches connection and changes password",
   expect(get("settings-panel").hidden).toBe(false);
   expect(get("settings-version").textContent).toBe("Shelt 开发版 · 464f2c5 · 未提交改动");
   expect(get("settings-herdr").hidden).toBe(false);
+  expect(get("target-form").hidden).toBe(true);
+  expect(get("password-form").hidden).toBe(true);
+  get("target-add").handlers.click[0]();
+  expect(get("target-form").hidden).toBe(false);
+  expect(get("target-add").attributes["aria-expanded"]).toBe("true");
+  get("target-name").value = "编辑中";
+  get("ui-language").value = "en";
+  get("ui-language").handlers.change[0]();
+  expect(preferences.get("shelt-language")).toBe("en");
+  expect(get("target-submit").textContent).toBe("Add");
+  expect(get("target-name").value).toBe("编辑中");
+  expect(get("settings-version").textContent).toBe("Shelt Development · 464f2c5 · Uncommitted changes");
+  expect(get("target-list").children[0].children[0].children[0].textContent).toBe("Local Herdr");
+  expect(get("target-list").children[1].children[0].children[0].textContent).toBe("开发机");
+  preferences.set("shelt-language", "zh-CN");
+  storageChanged({ key: "shelt-language" });
+  expect(get("ui-language").value).toBe("zh-CN");
+  get("target-cancel").handlers.click[0]();
+  expect(get("target-form").hidden).toBe(true);
   let rows = get("target-list").children;
   expect(rows.length).toBe(2);
   expect(rows[0].className).toContain("active");
@@ -125,7 +149,7 @@ test("settings panel manages targets, switches connection and changes password",
   expect(rows[1].children[0].children[0].textContent).toBe("开发机");
   expect(rows[1].children[0].children[1].textContent).toBe("dev@10.0.0.2 · 会话 work");
 
-  rows[1].handlers.click[0]({});
+  rows[1].children[0].handlers.click[0]({});
   await flush();
   expect(switching).toEqual([true]);
   expect(calls.at(-1)).toEqual({ url: "/api/herdr/active", method: "POST", body: { id: "abcd1234" } });
@@ -135,10 +159,12 @@ test("settings panel manages targets, switches connection and changes password",
   await flush();
   rows = get("target-list").children;
   expect(rows[1].className).toContain("active");
-  rows[1].handlers.click[0]({});
+  rows[1].children[0].handlers.click[0]({});
   await flush();
   expect(calls.filter((call) => call.url === "/api/herdr/active").length).toBe(1);
 
+  get("target-add").handlers.click[0]();
+  expect(get("target-form").hidden).toBe(false);
   get("target-name").value = "备用机";
   get("target-remote").value = "ops@example.com";
   get("target-session").value = "";
@@ -147,6 +173,7 @@ test("settings panel manages targets, switches connection and changes password",
   expect(calls.find((call) => call.url === "/api/herdr/targets" && call.method === "POST")?.body).toEqual({ name: "备用机", remote: "ops@example.com", session: null });
   expect(get("settings-status").textContent).toContain("已添加");
   expect(state.targets.length).toBe(2);
+  expect(get("target-form").hidden).toBe(true);
 
   rows = get("target-list").children;
   const editButton = rows[2].children[1];
@@ -165,6 +192,13 @@ test("settings panel manages targets, switches connection and changes password",
   expect(calls.find((call) => call.method === "DELETE")).toEqual({ url: "/api/herdr/targets/ef015678", method: "DELETE", body: undefined });
   expect(state.targets.length).toBe(1);
 
+  get("password-toggle").handlers.click[0]();
+  expect(get("password-form").hidden).toBe(false);
+  expect(get("target-form").hidden).toBe(true);
+  expect(get("password-toggle").attributes["aria-expanded"]).toBe("true");
+  get("password-cancel").handlers.click[0]();
+  expect(get("password-form").hidden).toBe(true);
+  get("password-toggle").handlers.click[0]();
   get("current-password").value = "old-password";
   get("new-password").value = "new-password";
   get("confirm-new-password").value = "mismatch";
@@ -178,6 +212,11 @@ test("settings panel manages targets, switches connection and changes password",
   await flush();
   expect(passwordCalls()).toBe(1);
   expect(get("settings-status").textContent).toContain("密码已修改");
+  expect(get("password-form").hidden).toBe(true);
+  preferences.set("shelt-language", "en");
+  storageChanged({ key: "shelt-language" });
+  expect(get("settings-status").textContent).toContain("Password changed");
+  expect(calls.filter(call => call.url === "/api/auth/password").length).toBe(1);
 
   get("settings-panel").handlers.keydown[0]({ key: "Escape" });
   expect(get("settings-panel").hidden).toBe(true);

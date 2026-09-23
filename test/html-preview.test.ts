@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 const source = new Bun.Transpiler({ loader: "ts" }).transformSync(
+  readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/preview-preferences.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/html-preview.ts", import.meta.url), "utf8").replace(/^import .*\n/gm, "").replace("export async function", "async function"),
 );
@@ -18,7 +19,7 @@ function setup(preference: string | null = null) {
   let complete: (() => void) | undefined;
   let defer = false;
   const context: any = {
-    mount, localStorage: { getItem: (key: string) => storage.get(key) ?? null },
+    mount, localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) },
     window: { addEventListener: (name: string, callback: (event: any) => void) => handlers.set(name, callback) },
     document: { createElement: () => ({ sandbox: { value: "" }, contentDocument: { title: "static" }, listeners: {} as Record<string, Function>, addEventListener(name: string, callback: Function) { this.listeners[name] = callback; } }) },
     tts: { setDocument: (...args: any[]) => spoken.push(args) },
@@ -33,6 +34,7 @@ function setup(preference: string | null = null) {
   runInNewContext(source, context);
   return {
     mount, calls, spoken, storage,
+    language: (value: string) => context.setLanguage(value),
     start: () => context.mountHtmlPreview(mount, "/page.html", "/api/preview?path=%2Fpage.html", context.tts),
     event: (name: string, event: unknown = {}) => handlers.get(name)?.(event),
     change: (value: string) => { storage.set("shelt-html-interactive", value); handlers.get("storage")?.({ key: "shelt-html-interactive" }); },
@@ -48,7 +50,13 @@ test("HTML preview defaults to isolated scripts and revokes its address when swi
   expect(ui.mount.children[0].sandbox.value).toBe("allow-scripts");
   expect(ui.mount.children[0].src).toBe("/api/preview-content/1/page.html");
   expect(ui.spoken.at(-1)?.[0]).toBeNull();
-  expect(ui.spoken.at(-1)?.[2]).toContain("交互模式");
+  expect(ui.spoken.at(-1)?.[2]).toBe("interactiveSpeechUnavailable");
+  const current = ui.mount.children[0];
+  const spokenCount = ui.spoken.length;
+  ui.language("en");
+  expect(ui.mount.children[0]).toBe(current);
+  expect(ui.calls).toHaveLength(1);
+  expect(ui.spoken.length).toBe(spokenCount);
   ui.change("false");
   await flush();
   expect(ui.calls).toContainEqual({ url: "/api/preview-session/1", method: "DELETE" });

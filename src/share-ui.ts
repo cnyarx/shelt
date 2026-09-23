@@ -1,3 +1,5 @@
+import { getLanguage, localizedError, onLanguageChange, t } from "./i18n.ts";
+
 export function setupShare(path: string): void {
   const toolbar = document.getElementById("share-toolbar")!;
   const toggle = document.getElementById("share-toggle")!;
@@ -9,6 +11,7 @@ export function setupShare(path: string): void {
   const api = `/api/shares?path=${encodeURIComponent(path)}`;
   let link = "";
   let expiry: number | null = null;
+  let feedback: (() => string) | null = () => t("loadingShare");
   toolbar.hidden = false;
   const ttsToolbar = document.getElementById("tts-toolbar")!;
   new ResizeObserver(() => {
@@ -20,16 +23,25 @@ export function setupShare(path: string): void {
     create.disabled = busy;
     revoke.disabled = busy || !expiry;
   };
+  const renderText = () => {
+    create.textContent = t(link ? "copyShare" : expiry ? "regenerateShare" : "createShare");
+    status.textContent = feedback ? feedback() : expiry
+      ? t("shareExpires", { date: new Date(expiry * 1000).toLocaleString(getLanguage()) }) + (link ? "" : t("shareUnrecoverable"))
+      : t("shareInfo");
+  };
+  const showFeedback = (message: () => string) => { feedback = message; renderText(); };
   const update = () => {
-    create.textContent = link ? "复制分享链接" : expiry ? "重新生成并复制" : "创建并复制链接";
+    feedback = null;
+    renderText();
     setBusy(busy);
-    status.textContent = expiry ? `有效期至 ${new Date(expiry * 1000).toLocaleString("zh-CN")}。${link ? "" : "旧链接无法找回，重新生成将使旧链接失效。"}` : "链接有效期为 7 天，持有链接的人无需登录即可查看此文档及其引用图片。";
     input.hidden = !link;
     input.value = link;
   };
+  onLanguageChange(renderText);
+  renderText();
   const request = async (method: string) => {
     const response = await fetch(api, { method, credentials: "same-origin" });
-    if (!response.ok) throw new Error(response.status === 401 ? "请先在终端页面登录" : await response.text());
+    if (!response.ok) throw new Error(response.status === 401 ? "Authentication required" : await response.text());
     return response.json();
   };
   toggle.addEventListener("click", async () => {
@@ -43,11 +55,11 @@ export function setupShare(path: string): void {
       if (link && !(await fetch(`/api/share/${new URL(link).pathname.slice(7)}`, { method: "HEAD", cache: "no-store" })).ok) link = "";
       expiry = result.expiresAt;
       update();
-    } catch (error) { status.textContent = String(error); }
+    } catch (error) { showFeedback(() => localizedError(error)); }
     finally { setBusy(false); }
   });
   create.addEventListener("click", async () => {
-    if (busy || (!link && expiry && !confirm("重新生成将立即使旧分享链接失效，是否继续？"))) return;
+    if (busy || (!link && expiry && !confirm(t("confirmRegenerate")))) return;
     setBusy(true);
     try {
       if (!link) {
@@ -59,19 +71,20 @@ export function setupShare(path: string): void {
       try {
         if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
         await navigator.clipboard.writeText(link);
-        status.textContent = "分享链接已复制。请仅发送给可信任的人。";
+        showFeedback(() => t("shareCopied"));
       } catch {
         input.focus(); input.select();
-        status.textContent = document.execCommand("copy") ? "分享链接已复制。" : "浏览器不允许自动复制，请复制下方已选中的链接。";
+        const copied = document.execCommand("copy");
+        showFeedback(() => t(copied ? "copied" : "manualCopy"));
       }
-    } catch (error) { status.textContent = String(error); }
+    } catch (error) { showFeedback(() => localizedError(error)); }
     finally { setBusy(false); }
   });
   revoke.addEventListener("click", async () => {
     if (busy) return;
     setBusy(true);
-    try { await request("DELETE"); expiry = null; link = ""; update(); status.textContent = "分享已撤销，旧链接立即失效。"; }
-    catch (error) { status.textContent = String(error); }
+    try { await request("DELETE"); expiry = null; link = ""; update(); showFeedback(() => t("shareRevoked")); }
+    catch (error) { showFeedback(() => localizedError(error)); }
     finally { setBusy(false); }
   });
   panel.addEventListener("keydown", (event) => {

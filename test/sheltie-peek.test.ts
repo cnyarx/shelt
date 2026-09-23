@@ -10,7 +10,8 @@ function setup(random = 0.5, reduced = false) {
   const toggle = Object.assign(new EventTarget(), { hidden: true });
   const panel = Object.assign(new EventTarget(), { hidden: true });
   const classes = new Set<string>();
-  const peek = Object.assign(new EventTarget(), { classList: { add: (name: string) => classes.add(name), remove: (...names: string[]) => names.forEach(name => classes.delete(name)), contains: (name: string) => classes.has(name) } });
+  const properties = new Map<string, string>();
+  const peek = Object.assign(new EventTarget(), { style: { setProperty: (key: string, value: string) => properties.set(key, value) }, classList: { add: (name: string) => classes.add(name), remove: (...names: string[]) => names.forEach(name => classes.delete(name)), contains: (name: string) => classes.has(name) } });
   const document = Object.assign(new EventTarget(), { hidden: false });
   const media = Object.assign(new EventTarget(), { matches: reduced });
   const window = Object.assign(new EventTarget(), { matchMedia: () => media });
@@ -20,7 +21,7 @@ function setup(random = 0.5, reduced = false) {
   let changed = () => {};
   runInNewContext(`${source}\ninstallSheltiePeek(toggle, panel, peek);`, {
     toggle, panel, peek, document, window,
-    Math: { random: () => random },
+    Math: Object.assign(Object.create(Math), { random: () => random }),
     setTimeout: (callback: () => void, delay: number) => { const id = ++sequence; timers.set(id, { callback, delay }); return id; },
     clearTimeout: (id: number) => timers.delete(id),
     MutationObserver: class {
@@ -29,7 +30,7 @@ function setup(random = 0.5, reduced = false) {
     },
   });
   return {
-    toggle, panel, peek, document, window, media, timers, observed,
+    toggle, panel, peek, document, window, media, timers, observed, properties,
     peeking: () => classes.has("is-peeking"),
     changed: () => changed(),
     fire: () => {
@@ -144,6 +145,36 @@ test("reduced motion suppresses automatic peeks but permits an animated hover", 
   ui.window.dispatchEvent(new Event("pagehide"));
   expect(ui.timers.size).toBe(0);
 });
+
+for (const random of [0, 0.5, 0.999999]) {
+  test(`random peek stays within a natural safe arc and changes direction (${random})`, () => {
+    const ui = setup(random, true);
+    ui.toggle.hidden = false;
+    ui.changed();
+    let previous = "";
+    for (let i = 0; i < 5; i++) {
+      ui.toggle.dispatchEvent(new Event("pointerenter"));
+      const x = parseFloat(ui.properties.get("--peek-x")!);
+      const y = parseFloat(ui.properties.get("--peek-y")!);
+      const tilt = parseFloat(ui.properties.get("--peek-tilt")!);
+      expect(x).toBeLessThanOrEqual(0);
+      expect(x).toBeGreaterThanOrEqual(-32);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThanOrEqual(32);
+      expect(Math.hypot(x, y)).toBeGreaterThanOrEqual(26.99);
+      expect(Math.hypot(x, y)).toBeLessThanOrEqual(32.01);
+      expect(Math.abs(tilt)).toBeLessThanOrEqual(16);
+      const direction = `${x},${y}`;
+      expect(direction).not.toBe(previous);
+      const during = [...ui.properties];
+      ui.toggle.dispatchEvent(new Event("pointerenter"));
+      expect([...ui.properties]).toEqual(during);
+      previous = direction;
+      ui.peek.dispatchEvent(new Event("animationend"));
+    }
+    expect(ui.timers.size).toBe(0);
+  });
+}
 
 test("changing motion preference never starts an automatic peek in reduced mode", () => {
   const ui = setup(0.5, false);

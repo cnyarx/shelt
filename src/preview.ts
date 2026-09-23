@@ -1,8 +1,9 @@
 import { renderMermaid } from "@vercel/beautiful-mermaid";
-import { escapeHtml, renderMarkdown } from "./markdown.ts";
+import { renderMarkdown } from "./markdown.ts";
 import { PreviewTtsController } from "./tts.ts";
 import { setupShare } from "./share-ui.ts";
 import { mountHtmlPreview } from "./html-preview.ts";
+import { localizedError, onLanguageChange, setupLanguage, t } from "./i18n.ts";
 
 function requiredElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -10,29 +11,36 @@ function requiredElement(id: string): HTMLElement {
   return element;
 }
 
+setupLanguage();
 const mount = requiredElement("preview");
+let message: (() => string) | null = () => t("loadingPreview");
+mount.textContent = message();
 const shareKey = location.pathname.match(/^\/share\/([a-f0-9]{64})$/)?.[1];
 const tts = shareKey ? null : new PreviewTtsController();
 if (shareKey) requiredElement("tts-toolbar").hidden = true;
 const path = shareKey ? `share:${shareKey}` : new URL(location.href).searchParams.get("path");
+const updateTitle = () => { document.title = `${shareKey ? t("sharedDocument") : path?.split("/").pop() || t("preview")} — Shelt`; };
+onLanguageChange(() => { updateTitle(); if (message) mount.textContent = message(); });
+updateTitle();
 if (!path || (!shareKey && !path.startsWith("/"))) {
-  showError("Absolute preview path required.");
+  showError(() => t("absolutePath"));
 } else {
-  document.title = shareKey ? "文档分享 — Shelt" : `${path.split("/").pop() || path} — Shelt`;
-  void load(path).catch(() => showError("无法加载文档，请检查网络后重试。"));
+  void load(path).catch(() => showError(() => t("previewLoadError")));
 }
 
 async function load(path: string): Promise<void> {
   const apiUrl = shareKey ? `/api/share/${shareKey}` : `/api/preview?path=${encodeURIComponent(path)}`;
   const response = await fetch(apiUrl, { credentials: "same-origin" });
   if (response.status === 401) {
-    showError("Authentication required. Unlock Shelt in the terminal tab, then reload this page.");
+    showError(() => t("previewLogin"));
     return;
   }
   if (!response.ok) {
-    showError(await response.text());
+    const error = await response.text();
+    showError(() => localizedError(error));
     return;
   }
+  message = null;
   if (!shareKey) setupShare(path);
   const kind = response.headers.get("x-shelt-preview-kind");
   if (kind === "markdown") {
@@ -56,8 +64,12 @@ async function load(path: string): Promise<void> {
         }));
         figure.innerHTML = svg;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unsupported Mermaid diagram";
-        figure.insertAdjacentHTML("beforeend", `<figcaption>Mermaid preview unavailable: ${escapeHtml(message)}</figcaption>`);
+        const detail = error instanceof Error ? error.message : "Unsupported Mermaid diagram";
+        const caption = document.createElement("figcaption");
+        const update = () => { caption.textContent = t("mermaidError", { detail }); };
+        onLanguageChange(update);
+        update();
+        figure.append(caption);
       }
     }));
     tts?.setDocument(mount);
@@ -67,9 +79,9 @@ async function load(path: string): Promise<void> {
     mount.className = "native-preview";
     const image = document.createElement("img");
     image.src = apiUrl;
-    image.alt = path.split("/").pop() || "Image preview";
+    image.alt = path.split("/").pop() || t("imagePreview");
     mount.replaceChildren(image);
-    tts?.setDocument(null, undefined, "图片预览未启用 OCR 识别");
+    tts?.setDocument(null, undefined, "imageSpeechUnavailable");
     return;
   }
   if (kind === "html" || kind === "svg") {
@@ -81,18 +93,18 @@ async function load(path: string): Promise<void> {
     const frame = document.createElement("iframe");
     frame.src = apiUrl;
     frame.sandbox.value = "allow-same-origin";
-    frame.title = path.split("/").pop() || "Document preview";
+    frame.title = path.split("/").pop() || t("preview");
     mount.replaceChildren(frame);
     frame.addEventListener("load", () => {
       try {
         tts?.setDocument(frame.contentDocument, frame);
       } catch {
-        tts?.setDocument(null, undefined, "此预览没有可朗读内容");
+        tts?.setDocument(null, undefined, "noReadable");
       }
     });
     return;
   }
-  showError("Unsupported preview response.");
+  showError(() => t("unsupportedPreview"));
 }
 
 function sanitizeSvg(source: string): string {
@@ -138,8 +150,9 @@ function setupTableOfContents(): void {
     const link = document.createElement("a");
     link.className = "toc-link";
     link.href = `#${encodeURIComponent(heading.id)}`;
-    link.textContent = heading.textContent || "未命名标题";
-    link.title = link.textContent;
+    const updateHeading = () => { link.textContent = heading.textContent || t("unnamedHeading"); link.title = link.textContent; };
+    if (!heading.textContent) onLanguageChange(updateHeading);
+    updateHeading();
     link.addEventListener("click", (event) => {
       event.preventDefault();
       heading.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
@@ -181,7 +194,8 @@ function setupTableOfContents(): void {
   const toolbar = requiredElement("tts-toolbar");
   const placePanel = () => {
     const sharing = requiredElement("share-toolbar");
-    panel.style.top = `${toolbar.hidden ? 16 : Math.max(toolbar.getBoundingClientRect().bottom, sharing.hidden ? 0 : sharing.getBoundingClientRect().bottom) + 8}px`;
+    const languageToolbar = requiredElement("preview-language");
+    panel.style.top = `${Math.max(languageToolbar.getBoundingClientRect().bottom, toolbar.hidden ? 0 : toolbar.getBoundingClientRect().bottom, sharing.hidden ? 0 : sharing.getBoundingClientRect().bottom) + 8}px`;
   };
   new ResizeObserver(placePanel).observe(toolbar);
   placePanel();
@@ -209,7 +223,8 @@ function setupTableOfContents(): void {
   updateActive();
 }
 
-function showError(message: string): void {
+function showError(text: () => string): void {
+  message = text;
   mount.className = "preview-error";
-  mount.textContent = message;
+  mount.textContent = text();
 }

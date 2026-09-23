@@ -101,7 +101,7 @@ describe("production bundle", () => {
     expect(styles).toContain(".markdown-body table { min-width: 900px; }");
     expect(styles).not.toContain("width: min(980px, calc(100% - 48px))");
     expect(preview.length).toBeGreaterThan(100_000);
-    expect(client).not.toContain("Mermaid preview unavailable");
+    expect(client).not.toContain("Unsupported Mermaid diagram");
     expect(client).not.toContain('output:"mathml"');
     expect(client).toContain('addEventListener("touchstart"');
     expect(client).toContain('addEventListener("touchmove"');
@@ -114,7 +114,7 @@ describe("production bundle", () => {
     expect(client).toContain("onBinary");
     expect(client).toContain("requestAnimationFrame");
     expect(client).not.toContain("previousSocket");
-    expect(preview).toContain("Mermaid preview unavailable");
+    expect(preview).toContain("Unsupported Mermaid diagram");
     expect(preview).toContain('output:"mathml"');
     expect(preview).toContain('fetch("/api/tts"');
     expect(preview).toContain("fetchTtsAudio");

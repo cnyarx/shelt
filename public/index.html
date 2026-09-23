@@ -32,40 +32,46 @@
     <span id="sheltie-peek" aria-hidden="true">
       <svg viewBox="0 0 512 512" focusable="false"><use href="/favicon.svg#sheltie-head" /></svg>
     </span>
-    <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="设置" hidden>
+    <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="设置" data-i18n-aria-label="settings" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
     </button>
-    <aside id="settings-panel" aria-label="设置" hidden>
+    <aside id="settings-panel" aria-label="设置" data-i18n-aria-label="settings" hidden>
+      <header class="settings-heading">
+        <h2 data-i18n="settings">设置</h2>
+        <select id="ui-language" class="language-select" aria-label="界面语言" data-i18n-aria-label="language"><option value="zh-CN">中文</option><option value="en">English</option></select>
+      </header>
       <section id="settings-herdr" hidden>
-        <h2>Herdr 连接</h2>
-        <p id="settings-hint">点击列表项即切换连接，当前终端会自动重连。</p>
+        <div class="settings-heading">
+          <h2 data-i18n="herdr">Herdr 连接</h2>
+          <button id="target-add" class="icon-action" type="button" aria-expanded="false" aria-controls="target-form" aria-label="添加连接" title="添加连接" data-i18n-aria-label="addConnection" data-i18n-title="addConnection">+</button>
+        </div>
+        <p id="settings-hint" data-i18n="herdrHint">点击连接即可切换，终端会自动重连。</p>
         <ul id="target-list"></ul>
-        <form id="target-form">
-          <input id="target-name" type="text" placeholder="名称" maxlength="40" required />
-          <input id="target-remote" type="text" placeholder="SSH 目标（user@host）" required />
-          <input id="target-session" type="text" placeholder="会话名（可选）" />
-          <button id="target-submit" type="submit">添加</button>
-          <button id="target-cancel" type="button" class="ghost" hidden>取消编辑</button>
+        <form id="target-form" hidden>
+          <input id="target-name" type="text" placeholder="名称" data-i18n-placeholder="name" aria-label="名称" data-i18n-aria-label="name" maxlength="40" required />
+          <input id="target-remote" type="text" placeholder="SSH 目标（user@host）" data-i18n-placeholder="remote" aria-label="SSH 目标（user@host）" data-i18n-aria-label="remote" required />
+          <input id="target-session" type="text" placeholder="会话名（可选）" data-i18n-placeholder="session" aria-label="会话名（可选）" data-i18n-aria-label="session" />
+          <div class="settings-form-actions"><button id="target-submit" type="submit">添加</button><button id="target-cancel" type="button" class="ghost" data-i18n="cancel">取消</button></div>
         </form>
       </section>
       <section>
         <label class="settings-switch" for="html-interactive">
-          <span>HTML 交互预览</span>
+          <span data-i18n="interactive">HTML 交互预览</span>
           <input id="html-interactive" type="checkbox" role="switch" aria-describedby="html-interactive-hint" checked />
         </label>
-        <p id="html-interactive-hint" class="settings-note">允许页面运行 JavaScript、加载外部库和同目录资源。查看不可信文件时可关闭。仅保存在此浏览器；匿名分享始终为静态预览。</p>
+        <p id="html-interactive-hint" class="settings-note" data-i18n="interactiveHint">允许运行 JavaScript、加载外部库和同目录资源。不可信文件可关闭；仅保存在此浏览器，匿名分享始终静态。</p>
       </section>
       <section>
-        <h2>登录密码</h2>
-        <form id="password-form">
-          <input id="current-password" type="password" placeholder="当前密码" autocomplete="current-password" required />
-          <input id="new-password" type="password" placeholder="新密码（至少 8 个字符）" autocomplete="new-password" minlength="8" maxlength="256" required />
-          <input id="confirm-new-password" type="password" placeholder="确认新密码" autocomplete="new-password" required />
-          <button id="password-submit" type="submit">修改密码</button>
+        <button id="password-toggle" class="settings-disclosure" type="button" aria-expanded="false" aria-controls="password-form"><span data-i18n="changePassword">修改密码</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></button>
+        <form id="password-form" hidden>
+          <input id="current-password" type="password" placeholder="当前密码" data-i18n-placeholder="currentPassword" aria-label="当前密码" data-i18n-aria-label="currentPassword" autocomplete="current-password" required />
+          <input id="new-password" type="password" placeholder="新密码（至少 8 个字符）" data-i18n-placeholder="newPassword" aria-label="新密码（至少 8 个字符）" data-i18n-aria-label="newPassword" autocomplete="new-password" minlength="8" maxlength="256" required />
+          <input id="confirm-new-password" type="password" placeholder="确认新密码" data-i18n-placeholder="confirmPassword" aria-label="确认新密码" data-i18n-aria-label="confirmPassword" autocomplete="new-password" required />
+          <div class="settings-form-actions"><button id="password-submit" type="submit" data-i18n="changePassword">修改密码</button><button id="password-cancel" type="button" class="ghost" data-i18n="cancel">取消</button></div>
         </form>
       </section>
       <p id="settings-status" role="status" aria-live="polite"></p>
-      <p id="settings-version" aria-label="Shelt 版本"></p>
+      <p id="settings-version" aria-label="Shelt 版本" data-i18n-aria-label="version"></p>
     </aside>
     <script type="module" src="/client.js"></script>
   </body>

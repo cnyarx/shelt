@@ -36,7 +36,11 @@ Only SHA-256 key hashes are persisted in the state directory's `shares.json`; li
 
 After signing in, a settings button sits at the top-right of the terminal page. In Herdr mode it manages a list of Herdr connections (the local default plus `herdr --remote` SSH targets with optional named sessions); clicking a row switches immediately: the server spawns `herdr --remote <target> [--session <name>]` as a plain argument array without a shell, so nothing needs to nest inside a running Herdr. The configuration persists privately in the state directory's `herdr-targets.json`, including the active selection across restarts. The list is hidden in shell mode.
 
-The same panel changes the login password: after verifying the current password it writes a new Argon2id hash, keeps the current browser signed in, and invalidates every other browser session.
+The connection form stays collapsed until you click the “+” next to the section title or edit an existing connection. “Change password” also expands on demand and collapses after saving or cancelling; after verifying the current password it writes a new Argon2id hash, keeps the current browser signed in, and invalidates every other browser session.
+
+Both Settings and the preview toolbar offer a 中文 / English selector. Chinese is the default; the preference is saved in the browser and synced across same-origin tabs. Switching updates only UI labels, not document content, connection names or the Herdr terminal, and does not reload previews or interrupt read-aloud playback.
+
+Hover over Settings to see the Sheltie peek out. Each appearance randomly varies its direction, distance and tilt within the space to the left and below the button, avoiding the same direction range twice in a row. Automatic peeks still occur every 3–5 minutes; reduced-motion preferences disable automatic peeks but not an intentional hover.
 
 ## Interactive HTML previews
 

@@ -1,7 +1,9 @@
 import { HTML_INTERACTIVE_KEY, htmlInteractiveEnabled, setHtmlInteractive } from "./preview-preferences.ts";
+import { localizedError, onLanguageChange, setupLanguage, t } from "./i18n.ts";
 
 type HerdrTarget = { id: string; name: string; remote: string; session: string | null };
 type TargetsResponse = { mode: string; active: string; targets: HerdrTarget[] };
+type BuildVersion = { version: string; commit: string; dirty: boolean };
 
 const LOCAL_ID = "local";
 
@@ -12,10 +14,12 @@ function element<T extends HTMLElement>(id: string): T {
 }
 
 export function setupSettings(options: { setSwitching: (value: boolean) => void }): void {
+  setupLanguage();
   const toggle = element<HTMLButtonElement>("settings-toggle");
   const panel = element("settings-panel");
   const herdrSection = element("settings-herdr");
   const list = element("target-list");
+  const add = element<HTMLButtonElement>("target-add");
   const form = element<HTMLFormElement>("target-form");
   const nameInput = element<HTMLInputElement>("target-name");
   const remoteInput = element<HTMLInputElement>("target-remote");
@@ -25,27 +29,35 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
   const status = element("settings-status");
   const version = element("settings-version");
   const interactivePreview = element<HTMLInputElement>("html-interactive");
-  interactivePreview.checked = htmlInteractiveEnabled();
-  interactivePreview.addEventListener("change", () => {
-    try {
-      setHtmlInteractive(interactivePreview.checked);
-      status.textContent = interactivePreview.checked ? "已开启 HTML 交互预览。" : "已切换为静态安全预览。";
-    } catch {
-      interactivePreview.checked = htmlInteractiveEnabled();
-      status.textContent = "浏览器不允许保存设置，请检查存储权限。";
-    }
-  });
-  window.addEventListener("storage", (event) => {
-    if (event.key === HTML_INTERACTIVE_KEY || event.key === null) interactivePreview.checked = htmlInteractiveEnabled();
-  });
+  const passwordToggle = element<HTMLButtonElement>("password-toggle");
   const passwordForm = element<HTMLFormElement>("password-form");
   const currentPassword = element<HTMLInputElement>("current-password");
   const newPassword = element<HTMLInputElement>("new-password");
   const confirmPassword = element<HTMLInputElement>("confirm-new-password");
   const passwordSubmit = element<HTMLButtonElement>("password-submit");
+  const passwordCancel = element<HTMLButtonElement>("password-cancel");
   let state: TargetsResponse = { mode: "shell", active: LOCAL_ID, targets: [] };
   let editing: string | null = null;
   let busy = false;
+  let statusText = () => "";
+  let versionText = () => "";
+  const showStatus = (message: () => string) => { statusText = message; status.textContent = message(); };
+  const showError = (error: unknown) => showStatus(() => localizedError(error));
+
+  interactivePreview.checked = htmlInteractiveEnabled();
+  interactivePreview.addEventListener("change", () => {
+    try {
+      setHtmlInteractive(interactivePreview.checked);
+      const enabled = interactivePreview.checked;
+      showStatus(() => t(enabled ? "interactiveOn" : "interactiveOff"));
+    } catch {
+      interactivePreview.checked = htmlInteractiveEnabled();
+      showStatus(() => t("storageError"));
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === HTML_INTERACTIVE_KEY || event.key === null) interactivePreview.checked = htmlInteractiveEnabled();
+  });
 
   const request = async (url: string, method: string, body?: unknown) => {
     const response = await fetch(url, {
@@ -61,7 +73,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
         const parsed = JSON.parse(text) as { error?: string };
         if (parsed.error) message = parsed.error;
       } catch {}
-      throw new Error(message || `请求失败（${response.status}）`);
+      throw new Error(message || t("requestFailed", { status: response.status }));
     }
     return response.json();
   };
@@ -69,28 +81,58 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
   const resetForm = () => {
     editing = null;
     form.reset();
-    submit.textContent = "添加";
-    cancel.hidden = true;
+    form.hidden = true;
+    add.setAttribute("aria-expanded", "false");
+    submit.textContent = t("add");
   };
+  const closePassword = () => {
+    passwordForm.reset();
+    passwordForm.hidden = true;
+    passwordToggle.setAttribute("aria-expanded", "false");
+  };
+  const closePanel = () => {
+    panel.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+    closePassword();
+    resetForm();
+  };
+  const openForm = (target?: HerdrTarget) => {
+    closePassword();
+    resetForm();
+    if (target) {
+      editing = target.id;
+      nameInput.value = target.name;
+      remoteInput.value = target.remote;
+      sessionInput.value = target.session ?? "";
+    }
+    submit.textContent = t(editing ? "save" : "add");
+    form.hidden = false;
+    add.setAttribute("aria-expanded", "true");
+    nameInput.focus();
+  };
+  resetForm();
+  closePassword();
 
   const render = () => {
     herdrSection.hidden = state.mode !== "herdr";
     list.replaceChildren();
     const rows: { id: string; name: string; detail: string; removable: boolean }[] = [
-      { id: LOCAL_ID, name: "本机 Herdr", detail: "默认连接", removable: false },
+      { id: LOCAL_ID, name: t("localHerdr"), detail: t("defaultConnection"), removable: false },
       ...state.targets.map((target) => ({
         id: target.id,
         name: target.name,
-        detail: target.session ? `${target.remote} · 会话 ${target.session}` : target.remote,
+        detail: target.session ? `${target.remote} · ${t("sessionDetail", { name: target.session })}` : target.remote,
         removable: true,
       })),
     ];
     for (const row of rows) {
       const item = document.createElement("li");
       item.className = `target-row${row.id === state.active ? " active" : ""}`;
-      item.title = row.id === state.active ? "当前连接" : "点击切换到此连接";
-      const main = document.createElement("span");
+      item.title = t(row.id === state.active ? "currentConnection" : "switchConnection");
+      const main = document.createElement("button");
+      main.type = "button";
       main.className = "target-main";
+      main.setAttribute("aria-current", String(row.id === state.active));
       const name = document.createElement("span");
       name.className = "target-name";
       name.textContent = row.name;
@@ -103,54 +145,44 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
         const edit = document.createElement("button");
         edit.type = "button";
         edit.className = "target-action";
-        edit.textContent = "编辑";
+        edit.textContent = t("edit");
         edit.addEventListener("click", (event) => {
           event.stopPropagation();
+          if (busy) return;
           const target = state.targets.find((candidate) => candidate.id === row.id);
-          if (!target) return;
-          editing = target.id;
-          nameInput.value = target.name;
-          remoteInput.value = target.remote;
-          sessionInput.value = target.session ?? "";
-          submit.textContent = "保存";
-          cancel.hidden = false;
-          nameInput.focus();
+          if (target) openForm(target);
         });
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "target-action";
-        remove.textContent = "删除";
+        remove.textContent = t("remove");
         remove.addEventListener("click", (event) => {
           event.stopPropagation();
-          if (busy || !confirm(`删除连接“${row.name}”？`)) return;
+          if (busy || !confirm(t("removeConnection", { name: row.name }))) return;
           busy = true;
           void request(`/api/herdr/targets/${row.id}`, "DELETE")
             .then(() => {
               if (editing === row.id) resetForm();
-              status.textContent = "已删除。";
+              showStatus(() => t("removed"));
               return refresh();
             })
-            .catch((error) => { status.textContent = String(error instanceof Error ? error.message : error); })
+            .catch(showError)
             .finally(() => { busy = false; });
         });
         item.append(edit, remove);
       }
-      item.addEventListener("click", () => {
+      main.addEventListener("click", () => {
         if (busy || row.id === state.active) return;
         busy = true;
         options.setSwitching(true);
-        status.textContent = "正在切换连接…";
+        showStatus(() => t("switching"));
         void request("/api/herdr/active", "POST", { id: row.id })
           .then(() => {
             state.active = row.id;
             render();
-            panel.hidden = true;
-            toggle.setAttribute("aria-expanded", "false");
+            closePanel();
           })
-          .catch((error) => {
-            options.setSwitching(false);
-            status.textContent = String(error instanceof Error ? error.message : error);
-          })
+          .catch((error) => { options.setSwitching(false); showError(error); })
           .finally(() => { busy = false; });
       });
       list.append(item);
@@ -161,74 +193,82 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
     state = await request("/api/herdr/targets", "GET") as TargetsResponse;
     render();
   };
+  onLanguageChange(() => {
+    render();
+    submit.textContent = t(editing ? "save" : "add");
+    status.textContent = statusText();
+    version.textContent = versionText();
+  });
 
   toggle.addEventListener("click", () => {
-    panel.hidden = !panel.hidden;
-    toggle.setAttribute("aria-expanded", String(!panel.hidden));
-    if (panel.hidden) return;
-    status.textContent = "";
-    version.textContent = "正在读取版本…";
+    if (!panel.hidden) { closePanel(); return; }
+    panel.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+    showStatus(() => "");
+    versionText = () => t("loadingVersion");
+    version.textContent = versionText();
     void request("/api/version", "GET")
-      .then((result: { version: string; commit: string; dirty: boolean }) => {
-        if (!panel.hidden) version.textContent = `Shelt ${result.version} · ${result.commit}${result.dirty ? " · 未提交改动" : ""}`;
+      .then((result: BuildVersion) => {
+        versionText = () => `Shelt ${result.version === "开发版" ? t("development") : result.version} · ${result.commit}${result.dirty ? ` · ${t("dirty")}` : ""}`;
+        if (!panel.hidden) version.textContent = versionText();
       })
-      .catch(() => { if (!panel.hidden) version.textContent = "版本信息不可用"; });
-    void refresh().catch((error) => { status.textContent = String(error instanceof Error ? error.message : error); });
+      .catch(() => { versionText = () => t("unavailableVersion"); if (!panel.hidden) version.textContent = versionText(); });
+    void refresh().catch(showError);
+  });
+  add.addEventListener("click", () => {
+    if (busy) return;
+    if (!form.hidden && !editing) { resetForm(); return; }
+    openForm();
   });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (busy) return;
-    const body = {
-      name: nameInput.value,
-      remote: remoteInput.value.trim(),
-      session: sessionInput.value.trim() || null,
-    };
+    const body = { name: nameInput.value, remote: remoteInput.value.trim(), session: sessionInput.value.trim() || null };
     busy = true;
     submit.disabled = true;
+    const wasEditing = editing !== null;
     void request(editing ? `/api/herdr/targets/${editing}` : "/api/herdr/targets", editing ? "PUT" : "POST", body)
       .then(() => {
-        status.textContent = editing ? "已保存。" : "已添加。";
+        showStatus(() => t(wasEditing ? "saved" : "added"));
         resetForm();
+        add.focus();
         return refresh();
       })
-      .catch((error) => { status.textContent = String(error instanceof Error ? error.message : error); })
+      .catch(showError)
       .finally(() => { busy = false; submit.disabled = false; });
   });
-
-  cancel.addEventListener("click", () => resetForm());
-
+  cancel.addEventListener("click", () => { if (!busy) { resetForm(); add.focus(); } });
+  passwordToggle.addEventListener("click", () => {
+    if (busy) return;
+    if (!passwordForm.hidden) { closePassword(); return; }
+    resetForm();
+    passwordForm.hidden = false;
+    passwordToggle.setAttribute("aria-expanded", "true");
+    currentPassword.focus();
+  });
+  passwordCancel.addEventListener("click", () => { if (!busy) { closePassword(); passwordToggle.focus(); } });
   passwordForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (busy) return;
     if (newPassword.value !== confirmPassword.value) {
-      status.textContent = "两次输入的新密码不一致。";
+      showStatus(() => t("passwordMismatch"));
       confirmPassword.select();
       return;
     }
     busy = true;
     passwordSubmit.disabled = true;
     void request("/api/auth/password", "POST", { currentPassword: currentPassword.value, newPassword: newPassword.value })
-      .then(() => {
-        status.textContent = "密码已修改，其他浏览器的登录状态已失效。";
-        passwordForm.reset();
-      })
-      .catch((error) => { status.textContent = String(error instanceof Error ? error.message : error); })
+      .then(() => { showStatus(() => t("passwordChanged")); closePassword(); passwordToggle.focus(); })
+      .catch(showError)
       .finally(() => { busy = false; passwordSubmit.disabled = false; });
   });
-
   panel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      panel.hidden = true;
-      toggle.setAttribute("aria-expanded", "false");
-      toggle.focus();
-    }
+    if (event.key === "Escape") { closePanel(); toggle.focus(); }
   });
-
   document.addEventListener("click", (event) => {
     if (panel.hidden || panel.contains(event.target as Node) || toggle.contains(event.target as Node)) return;
-    panel.hidden = true;
-    toggle.setAttribute("aria-expanded", "false");
+    closePanel();
   });
 }
 

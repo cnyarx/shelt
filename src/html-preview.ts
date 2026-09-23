@@ -1,16 +1,21 @@
 import { HTML_INTERACTIVE_KEY, htmlInteractiveEnabled } from "./preview-preferences.ts";
 import type { PreviewTtsController } from "./tts.ts";
+import { onLanguageChange, t, type MessageKey } from "./i18n.ts";
 
 export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl: string, tts: PreviewTtsController | null): Promise<void> {
   let generation = 0;
   let grant: string | null = null;
+  let errorKey: MessageKey | null = null;
+  const showError = (key: MessageKey) => { errorKey = key; mount.textContent = t(key); };
+  onLanguageChange(() => { if (errorKey) mount.textContent = t(errorKey); });
   const revoke = (token: string) => fetch(`/api/preview-session/${token}`, { method: "DELETE", credentials: "same-origin", keepalive: true }).catch(() => {});
   const render = async () => {
     const current = ++generation;
     const previous = grant;
     grant = null;
+    errorKey = null;
     mount.replaceChildren();
-    tts?.setDocument(null, undefined, "正在加载预览…");
+    tts?.setDocument(null, undefined, "loadingPreview");
     if (previous) await revoke(previous);
     const interactive = htmlInteractiveEnabled();
     let url = apiUrl;
@@ -19,7 +24,7 @@ export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl:
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }),
       });
       if (!response.ok) {
-        if (current === generation) mount.textContent = response.status === 401 ? "请先在终端页面登录，再刷新预览。" : "无法打开交互预览。请检查文件是否在允许的目录中，或在设置中关闭 HTML 交互预览。";
+        if (current === generation) showError(response.status === 401 ? "previewLogin" : "interactiveLoadError");
         return;
       }
       const created = await response.json() as { token: string; url: string };
@@ -31,28 +36,28 @@ export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl:
     const frame = document.createElement("iframe");
     frame.sandbox.value = interactive ? "allow-scripts" : "allow-same-origin";
     frame.referrerPolicy = "no-referrer";
-    frame.title = path.split("/").pop() || "HTML 预览";
+    frame.title = path.split("/").pop() || t("htmlPreview");
     if (interactive) {
-      tts?.setDocument(null, undefined, "交互模式不支持朗读；可在设置中关闭 HTML 交互预览后朗读。");
+      tts?.setDocument(null, undefined, "interactiveSpeechUnavailable");
     } else {
       frame.addEventListener("load", () => {
         if (current !== generation) return;
         try { tts?.setDocument(frame.contentDocument, frame); }
-        catch { tts?.setDocument(null, undefined, "此预览没有可朗读内容"); }
+        catch { tts?.setDocument(null, undefined, "noReadable"); }
       });
     }
     frame.src = url;
     mount.replaceChildren(frame);
   };
   window.addEventListener("storage", (event) => {
-    if (event.key === HTML_INTERACTIVE_KEY || event.key === null) void render().catch(() => { mount.textContent = "无法切换预览模式，请刷新后重试。"; });
+    if (event.key === HTML_INTERACTIVE_KEY || event.key === null) void render().catch(() => showError("switchPreviewError"));
   });
   window.addEventListener("pagehide", () => {
     generation += 1;
     if (grant) { void revoke(grant); grant = null; }
   });
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) void render().catch(() => { mount.textContent = "无法恢复预览，请刷新后重试。"; });
+    if (event.persisted) void render().catch(() => showError("resumePreviewError"));
   });
   await render();
 }

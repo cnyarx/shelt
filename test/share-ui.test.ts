@@ -2,7 +2,10 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
-const source = new Bun.Transpiler({ loader: "ts" }).transformSync(readFileSync(new URL("../src/share-ui.ts", import.meta.url), "utf8").replace("export function", "function"));
+const source = new Bun.Transpiler({ loader: "ts" }).transformSync(
+  readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
+  readFileSync(new URL("../src/share-ui.ts", import.meta.url), "utf8").replace(/^import .*\n/gm, "").replace("export function", "function"),
+);
 
 test("share controls serialize requests and preserve regeneration confirmation", async () => {
   const elements = new Map<string, any>();
@@ -86,3 +89,33 @@ for (const valid of [true, false]) {
     expect(requests).toEqual(["GET", "POST", "GET", "HEAD"]);
   });
 }
+
+test("switching share language preserves the link, selection and last feedback without requests", async () => {
+  const elements = new Map<string, any>();
+  for (const id of ["share-toolbar", "share-toggle", "share-panel", "share-status", "share-create", "share-revoke", "share-url", "tts-toolbar"]) {
+    elements.set(id, { hidden: id === "share-panel", style: {}, handlers: {}, selectionStart: 0, selectionEnd: 0, addEventListener(name: string, handler: Function) { this.handlers[name] = handler; }, setAttribute() {}, classList: { contains: () => true } });
+  }
+  const requests: string[] = [];
+  const context: any = {
+    localStorage: { getItem: () => null, setItem() {} },
+    document: { getElementById: (id: string) => elements.get(id) },
+    ResizeObserver: class { observe() {} }, URL, location: { origin: "https://shelt.example" },
+    navigator: { clipboard: { writeText: async () => {} } },
+    fetch: async (_url: string, options: { method: string }) => { requests.push(options.method); return { ok: true, json: async () => ({ expiresAt: options.method === "GET" ? null : 2000000000, url: `/share/${"a".repeat(64)}` }) }; },
+  };
+  runInNewContext(`${source}\nsetupShare('/doc.md');`, context);
+  const get = (id: string) => elements.get(`share-${id}`);
+  await get("toggle").handlers.click();
+  await get("create").handlers.click();
+  get("url").selectionStart = 5;
+  get("url").selectionEnd = 10;
+  const link = get("url").value;
+  context.setLanguage("en");
+  expect(get("create").textContent).toBe("Copy share link");
+  expect(get("status").textContent).toContain("Link copied");
+  expect(get("url").value).toBe(link);
+  expect(get("url").selectionStart).toBe(5);
+  expect(get("url").selectionEnd).toBe(10);
+  expect(get("panel").hidden).toBe(false);
+  expect(requests).toEqual(["GET", "POST"]);
+});
