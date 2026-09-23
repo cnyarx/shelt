@@ -39,7 +39,7 @@ function fakeElement(tag = "div"): any {
 const IDS = [
   "settings-toggle", "settings-panel", "settings-herdr", "target-list", "target-form",
   "target-name", "target-remote", "target-session", "target-submit", "target-cancel",
-  "settings-status", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
+  "settings-status", "settings-version", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
 ];
 
 function flush(times = 6) {
@@ -80,6 +80,7 @@ test("settings panel manages targets, switches connection and changes password",
       const body = init.body ? JSON.parse(init.body) : undefined;
       calls.push({ url, method, body });
       if (url === "/api/herdr/targets" && method === "GET") return ok({ ...state, targets: [...state.targets] });
+      if (url === "/api/version" && method === "GET") return ok({ version: "开发版", commit: "464f2c5", dirty: true });
       if (url === "/api/herdr/targets" && method === "POST") {
         const entry = { id: "ef015678", ...body };
         state.targets.push(entry);
@@ -115,6 +116,7 @@ test("settings panel manages targets, switches connection and changes password",
   get("settings-toggle").handlers.click[0]();
   await flush();
   expect(get("settings-panel").hidden).toBe(false);
+  expect(get("settings-version").textContent).toBe("Shelt 开发版 · 464f2c5 · 未提交改动");
   expect(get("settings-herdr").hidden).toBe(false);
   let rows = get("target-list").children;
   expect(rows.length).toBe(2);

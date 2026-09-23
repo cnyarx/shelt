@@ -23,6 +23,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
   const submit = element<HTMLButtonElement>("target-submit");
   const cancel = element<HTMLButtonElement>("target-cancel");
   const status = element("settings-status");
+  const version = element("settings-version");
   const interactivePreview = element<HTMLInputElement>("html-interactive");
   interactivePreview.checked = htmlInteractiveEnabled();
   interactivePreview.addEventListener("change", () => {
@@ -166,6 +167,12 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
     toggle.setAttribute("aria-expanded", String(!panel.hidden));
     if (panel.hidden) return;
     status.textContent = "";
+    version.textContent = "正在读取版本…";
+    void request("/api/version", "GET")
+      .then((result: { version: string; commit: string; dirty: boolean }) => {
+        if (!panel.hidden) version.textContent = `Shelt ${result.version} · ${result.commit}${result.dirty ? " · 未提交改动" : ""}`;
+      })
+      .catch(() => { if (!panel.hidden) version.textContent = "版本信息不可用"; });
     void refresh().catch((error) => { status.textContent = String(error instanceof Error ? error.message : error); });
   });
 

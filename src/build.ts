@@ -1,11 +1,22 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import { join } from "node:path";
+import { buildVersion } from "./build-version.ts";
 
 const root = join(import.meta.dir, "..");
 const dist = join(root, "dist");
+const git = (...args: string[]) => {
+  const result = Bun.spawnSync(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString().trim()}`);
+  return result.stdout.toString().trim();
+};
+const commit = git("rev-parse", "HEAD");
+const dirty = git("status", "--porcelain", "--untracked-files=no") !== "";
+if (process.env.SHELT_RELEASE_TAG && process.env.SHELT_BUILD_COMMIT !== commit) throw new Error("Release commit does not match checked-out source");
+const version = buildVersion(commit, dirty, process.env.SHELT_RELEASE_TAG);
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
+await writeFile(join(dist, "version.json"), JSON.stringify(version) + "\n");
 
 const result = await Bun.build({
   entrypoints: [join(root, "src/client.ts"), join(root, "src/preview.ts")],

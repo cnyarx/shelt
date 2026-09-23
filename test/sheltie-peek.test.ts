@@ -10,7 +10,7 @@ function setup(random = 0.5, reduced = false) {
   const toggle = Object.assign(new EventTarget(), { hidden: true });
   const panel = Object.assign(new EventTarget(), { hidden: true });
   const classes = new Set<string>();
-  const peek = Object.assign(new EventTarget(), { classList: { add: (name: string) => classes.add(name), remove: (name: string) => classes.delete(name) } });
+  const peek = Object.assign(new EventTarget(), { classList: { add: (name: string) => classes.add(name), remove: (name: string) => classes.delete(name), contains: (name: string) => classes.has(name) } });
   const document = Object.assign(new EventTarget(), { hidden: false });
   const media = Object.assign(new EventTarget(), { matches: reduced });
   const window = Object.assign(new EventTarget(), { matchMedia: () => media });
@@ -96,21 +96,23 @@ for (const reason of ["panel", "auth", "background", "motion"] as const) {
   });
 }
 
-test("Sheltie stays out of the way while the settings button is hovered or focused", () => {
+test("Sheltie peeks once when the settings button is hovered and re-arms afterwards", () => {
   const ui = setup();
   ui.toggle.hidden = false;
   ui.changed();
-  ui.fire();
-  ui.toggle.dispatchEvent(new Event("pointerenter"));
-  expect(ui.peeking()).toBe(false);
-  expect(ui.timers.size).toBe(0);
-  ui.toggle.dispatchEvent(new Event("focus"));
-  ui.toggle.dispatchEvent(new Event("pointerleave"));
-  expect(ui.timers.size).toBe(0);
-  ui.toggle.dispatchEvent(new Event("blur"));
   expect(ui.timers.size).toBe(1);
-  ui.fire();
-  ui.toggle.dispatchEvent(new Event("focus"));
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(true);
+  expect(ui.timers.size).toBe(0);
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
+  expect(ui.peeking()).toBe(true);
+  expect(ui.timers.size).toBe(0);
+  ui.peek.dispatchEvent(new Event("animationend"));
+  expect(ui.peeking()).toBe(false);
+  expect(ui.timers.size).toBe(1);
+  ui.panel.hidden = false;
+  ui.changed();
+  ui.toggle.dispatchEvent(new Event("pointerenter"));
   expect(ui.peeking()).toBe(false);
   expect(ui.timers.size).toBe(0);
 });

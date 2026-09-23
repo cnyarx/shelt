@@ -15,12 +15,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-linux:
-    name: Build Linux x86_64 musl
+  version:
+    name: Determine next version
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+      skip: ${{ steps.next.outputs.skip }}
+    steps:
+      - name: Check out validated commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Determine next version
+        id: next
+        shell: bash
+        run: |
+          git fetch --tags --force
+          existing=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" --list 'v0.0.*' | head -n 1)
+          if [[ -n "$existing" ]]; then
+            echo "Commit already released as $existing"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest=$(git tag --list 'v0.0.*' --sort=-version:refname | head -n 1)
+          if [[ -z "$latest" ]]; then
+            next="v0.0.1"
+          elif [[ "$latest" =~ ^v0\.0\.([0-9]+)$ ]]; then
+            next="v0.0.$((BASH_REMATCH[1] + 1))"
+          else
+            echo "Unsupported latest release tag: $latest" >&2
+            exit 1
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+  build-linux:
+    name: Build Linux x86_64 musl
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -48,6 +87,9 @@ jobs:
         run: bun install --frozen-lockfile --registry=https://registry.npmjs.org
 
       - name: Build standalone executable
+        env:
+          SHELT_RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          SHELT_BUILD_COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: bun run compile
 
       - name: Verify static Linux musl ABI
@@ -67,10 +109,8 @@ jobs:
 
   build-macos-aarch64:
     name: Build macOS Apple Silicon
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: macos-14
     timeout-minutes: 30
 
@@ -95,6 +135,9 @@ jobs:
         run: bun install --frozen-lockfile --registry=https://registry.npmjs.org
 
       - name: Build standalone executable
+        env:
+          SHELT_RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          SHELT_BUILD_COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: bun run build && bun run src/compile.ts --target aarch64-apple-darwin
 
       - name: Verify macOS Apple Silicon executable
@@ -116,6 +159,7 @@ jobs:
   publish:
     name: Publish next patch release
     needs:
+      - version
       - build-linux
       - build-macos-aarch64
     runs-on: ubuntu-latest
@@ -135,35 +179,10 @@ jobs:
           path: release
           merge-multiple: true
 
-      - name: Determine next version
-        id: version
-        shell: bash
-        run: |
-          git fetch --tags --force
-          existing=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" --list 'v0.0.*' | head -n 1)
-          if [[ -n "$existing" ]]; then
-            echo "Commit already released as $existing"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "tag=$existing" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          latest=$(git tag --list 'v0.0.*' --sort=-version:refname | head -n 1)
-          if [[ -z "$latest" ]]; then
-            next="v0.0.1"
-          elif [[ "$latest" =~ ^v0\.0\.([0-9]+)$ ]]; then
-            next="v0.0.$((BASH_REMATCH[1] + 1))"
-          else
-            echo "Unsupported latest release tag: $latest" >&2
-            exit 1
-          fi
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "tag=$next" >> "$GITHUB_OUTPUT"
-
       - name: Publish GitHub Release
-        if: steps.version.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
           RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           gh release create "$RELEASE_TAG" \

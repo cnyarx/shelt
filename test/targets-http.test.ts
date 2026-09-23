@@ -37,6 +37,12 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
 
       expect((await api("/api/herdr/targets", "GET", undefined, "")).status).toBe(200);
       expect((await fetch(`${base}/api/herdr/targets`)).status).toBe(401);
+      const version = await api("/api/version");
+      expect(version.status).toBe(200);
+      expect(version.headers.get("cache-control")).toBe("no-store");
+      expect(await version.json()).toEqual(JSON.parse(await readFile("dist/version.json", "utf8")));
+      expect((await fetch(`${base}/api/version`)).status).toBe(401);
+      expect((await api("/api/auth/password", "POST", { currentPassword: "x-password", newPassword: "y-password" }, "null")).status).toBe(403);
       expect((await fetch(`${base}/api/auth/password`, { method: "POST", headers: { Origin: base, "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: "x-password", newPassword: "y-password" }) })).status).toBe(401);
       expect((await api("/api/herdr/targets", "POST", { name: "x", remote: "example.com" }, "https://evil.example")).status).toBe(403);
       expect((await api("/api/herdr/active", "POST", { id: "local" }, "https://evil.example")).status).toBe(403);

@@ -1,9 +1,7 @@
 export function installSheltiePeek(toggle: HTMLElement, panel: HTMLElement, peek: HTMLElement): void {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let hovered = false;
-  let focused = false;
-  const ready = () => !toggle.hidden && panel.hidden && !document.hidden && !reducedMotion.matches && !hovered && !focused;
+  const ready = () => !toggle.hidden && panel.hidden && !document.hidden && !reducedMotion.matches && !peek.classList.contains("is-peeking");
 
   const hide = () => {
     clearTimeout(timer);
@@ -18,14 +16,17 @@ export function installSheltiePeek(toggle: HTMLElement, panel: HTMLElement, peek
       if (ready()) peek.classList.add("is-peeking");
     }, 180_000 + Math.random() * 120_000);
   };
+  const play = () => {
+    if (!ready()) return;
+    clearTimeout(timer);
+    timer = undefined;
+    peek.classList.add("is-peeking");
+  };
 
   peek.addEventListener("animationend", (event) => {
     if (event.target === peek) schedule();
   });
-  toggle.addEventListener("pointerenter", () => { hovered = true; schedule(); });
-  toggle.addEventListener("pointerleave", () => { hovered = false; schedule(); });
-  toggle.addEventListener("focus", () => { focused = true; schedule(); });
-  toggle.addEventListener("blur", () => { focused = false; schedule(); });
+  toggle.addEventListener("pointerenter", play);
   document.addEventListener("visibilitychange", schedule);
   reducedMotion.addEventListener("change", schedule);
   window.addEventListener("pagehide", hide);

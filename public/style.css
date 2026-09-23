@@ -74,3 +74,4 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 .settings-switch input:checked::before { transform: translateX(14px); background: #04202e; }
 .settings-note { margin: 8px 0 0; color: #8b949e; font-size: 12px; }
 #settings-status { min-height: 18px; margin: 10px 0 0; color: #9eb8c7; font-size: 12px; overflow-wrap: break-word; }
+#settings-version { margin: 8px 0 0; color: #7d8992; font-size: 11px; text-align: right; }

@@ -49,6 +49,7 @@ const TERMINAL_OUTPUT_WINDOW_BYTES: usize = 512 * 1024;
 const TERMINAL_OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 const TERMINAL_OUTPUT_CHANNEL_CAPACITY: usize = 8;
 const INDEX_HTML: &[u8] = include_bytes!("../dist/index.html");
+const BUILD_VERSION: &[u8] = include_bytes!("../dist/version.json");
 const STYLE_CSS: &[u8] = include_bytes!("../dist/style.css");
 const CLIENT_CSS: &[u8] = include_bytes!("../dist/client.css");
 const CLIENT_JS_GZ: &[u8] = include_bytes!("../dist/client.js.gz");
@@ -466,6 +467,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/resolve-wikilink", get(resolve_wikilink_handler))
         .route("/health", get(health_handler))
+        .route("/api/version", get(version_handler))
         .fallback(static_handler)
         .layer(axum::middleware::from_fn(isolate_preview_requests))
         .with_state(state.clone());
@@ -860,6 +862,24 @@ async fn health_handler(State(state): State<AppState>, headers: HeaderMap) -> Re
         return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
     }
     secure(Json(Health { ok: true }).into_response())
+}
+
+async fn version_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !allowed_host(&state, &headers) {
+        return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
+    }
+    if !authenticated(&state, &headers) {
+        return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    }
+    let mut response = secure(BUILD_VERSION.into_response());
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 async fn tts_handler(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {

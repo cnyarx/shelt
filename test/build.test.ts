@@ -20,6 +20,7 @@ describe("production bundle", () => {
     expect(html).toContain('id="terminal"');
     expect(html).toContain('id="sheltie-peek" aria-hidden="true"');
     expect(html).toContain('<use href="/favicon.svg#sheltie-head"');
+    expect(html).toContain('id="settings-version"');
     expect(await Bun.file(join(root, "dist/client.css")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/client.js")).exists()).toBe(true);
     expect(await Bun.file(join(root, "dist/favicon.png")).exists()).toBe(true);

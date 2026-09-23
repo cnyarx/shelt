@@ -30,6 +30,7 @@ import {
 
 const root = resolve(import.meta.dir, "..");
 const dist = join(root, "dist");
+const versionJson = await readFile(join(dist, "version.json"), "utf8");
 const host = process.env.SHELT_HOST || "127.0.0.1";
 const port = Number(process.env.SHELT_PORT || "8790");
 const canonicalPreviewRoots = await Promise.all(
@@ -557,6 +558,10 @@ const server = Bun.serve<SessionData>({
     }
 
     if (url.pathname === "/health" && req.method === "GET") return json({ ok: true });
+    if (url.pathname === "/api/version" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      return response(versionJson, 200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    }
     if ((req.method === "GET" || req.method === "HEAD") && !url.pathname.startsWith("/api/")) return staticFile(url.pathname);
     return response("Not found", 404);
   },
