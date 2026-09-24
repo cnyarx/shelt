@@ -11,6 +11,7 @@ import { embeddedAssets } from "./generated-assets.ts";
 import { ShareStore, imageSources, validShareKey } from "./shares.ts";
 import { LOCAL_TARGET_ID, TargetStore, targetError } from "./targets.ts";
 import { INTERACTIVE_CSP, InteractivePreviews } from "./interactive-preview.ts";
+import { checkSourceUpdate } from "./update-check.ts";
 import {
   herdrPaneCwd,
   herdrPaneEnvironment,
@@ -557,6 +558,12 @@ const server = Bun.serve<SessionData>({
       return json({ ok: true, path });
     }
 
+    if (url.pathname === "/api/update" && ["GET", "POST"].includes(req.method)) {
+      if (req.method === "POST" && !allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      if (req.method === "POST") return json({ error: "updateSourceMode" }, 409);
+      return json(await checkSourceUpdate(JSON.parse(versionJson)), 200, { "Cache-Control": "no-store" });
+    }
     if (url.pathname === "/health" && req.method === "GET") return json({ ok: true });
     if (url.pathname === "/api/version" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);

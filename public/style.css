@@ -81,4 +81,10 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 .settings-switch input:checked::before { transform: translateX(14px); background: #04202e; }
 .settings-note { margin: 8px 0 0; color: #8b949e; font-size: 12px; }
 #settings-status { min-height: 18px; margin: 10px 0 0; color: #9eb8c7; font-size: 12px; overflow-wrap: break-word; }
-#settings-version { margin: 8px 0 0; color: #7d8992; font-size: 11px; text-align: right; }
+#settings-version { margin: 0; color: #7d8992; font-size: 11px; overflow-wrap: anywhere; }
+.settings-version-row { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#update-install { padding: 4px 8px; border: 1px solid #31bafd; border-radius: 7px; background: transparent; color: #62cbff; font-family: inherit; font-size: 12px; line-height: 1.5; cursor: pointer; }
+#update-install:disabled { opacity: .55; cursor: default; }
+#update-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border: 2px solid #14181c; border-radius: 50%; background: #f85149; pointer-events: none; }
+#update-status { margin: 6px 0 0; color: #9eb8c7; font-size: 12px; overflow-wrap: anywhere; }
+#update-status:empty { display: none; }

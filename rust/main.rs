@@ -4,6 +4,7 @@ mod interactive_preview;
 mod share_routes;
 mod shares;
 mod targets;
+mod updater;
 
 use auth::{password_error, AuthStore, MAX_AUTH_BODY_BYTES};
 use axum::{
@@ -73,6 +74,7 @@ struct ActiveSession {
     id: u64,
     pgid: i32,
     cancel: oneshot::Sender<()>,
+    exited: tokio::sync::watch::Receiver<bool>,
 }
 
 #[derive(Clone)]
@@ -88,6 +90,7 @@ struct AppState {
     shares: shares::ShareStore,
     targets: targets::TargetStore,
     interactive_previews: interactive_preview::InteractivePreviews,
+    updater: updater::Updater,
     failed_logins: Arc<Mutex<u32>>,
 }
 
@@ -226,8 +229,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "status" => status()?,
         "url" => println!("{}", server_url()),
         "logs" => println!("{}", log_file().display()),
+        "version" | "--version" => print!("{}", std::str::from_utf8(BUILD_VERSION)?),
         "foreground" => foreground().await?,
-        _ => return Err("usage: shelt [start|stop|restart|status|url|logs|foreground]".into()),
+        _ => {
+            return Err(
+                "usage: shelt [start|stop|restart|status|url|logs|version|foreground]".into(),
+            )
+        }
     }
     Ok(())
 }
@@ -399,6 +407,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         shares: shares::ShareStore::load(state_dir().join("shares.json"))?,
         targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
         interactive_previews: interactive_preview::InteractivePreviews::default(),
+        updater: updater::Updater::new()?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
     let app = Router::new()
@@ -468,6 +477,10 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/resolve-wikilink", get(resolve_wikilink_handler))
         .route("/health", get(health_handler))
         .route("/api/version", get(version_handler))
+        .route(
+            "/api/update",
+            get(updater::status_handler).post(updater::install_handler),
+        )
         .fallback(static_handler)
         .layer(axum::middleware::from_fn(isolate_preview_requests))
         .with_state(state.clone());
@@ -477,13 +490,34 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         launch.mode,
         launch.command.display()
     );
-    let shutdown_state = state.clone();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-    if let Some(active) = shutdown_state.active.lock().unwrap().take() {
-        kill_group(active.pgid);
-        let _ = active.cancel.send(());
+    {
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let server = async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+        };
+        tokio::pin!(server);
+        tokio::select! {
+            result = &mut server => result?,
+            _ = async { tokio::select! { _ = shutdown_signal() => {}, _ = state.updater.restart_requested() => {} } } => {
+                state.updater.stop_accepting();
+                let active = state.active.lock().unwrap().take();
+                if let Some(active) = active {
+                    kill_group(active.pgid);
+                    let _ = active.cancel.send(());
+                    let mut exited = active.exited;
+                    let _ = tokio::time::timeout(Duration::from_secs(2), exited.wait_for(|done| *done)).await;
+                }
+                let _ = shutdown_tx.send(());
+                if let Ok(result) = tokio::time::timeout(Duration::from_secs(5), &mut server).await { result?; }
+            }
+        }
+    }
+    if let Some(installation) = state.updater.take_installation() {
+        return Err(installation.exec().into());
     }
     Ok(())
 }
@@ -1256,6 +1290,9 @@ async fn ws_handler(
     if !authenticated(&state, &headers) {
         return secure((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
     }
+    if state.updater.is_restarting() {
+        return secure((StatusCode::SERVICE_UNAVAILABLE, "Restarting").into_response());
+    }
     let cols = query.cols.unwrap_or(120).clamp(1, 1000);
     let rows = query.rows.unwrap_or(40).clamp(1, 500);
     ws.max_message_size(1024 * 1024)
@@ -1263,6 +1300,9 @@ async fn ws_handler(
 }
 
 async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
+    if state.updater.is_restarting() {
+        return;
+    }
     let pty = native_pty_system();
     let pair = match pty.openpty(PtySize {
         rows,
@@ -1317,17 +1357,30 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
         }
     };
     let (cancel_tx, mut cancel_rx) = oneshot::channel();
+    let (exited_tx, exited_rx) = tokio::sync::watch::channel(false);
     let id = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos() as u64;
-    if let Some(old) = state.active.lock().unwrap().replace(ActiveSession {
-        id,
-        pgid,
-        cancel: cancel_tx,
-    }) {
-        kill_group(old.pgid);
-        let _ = old.cancel.send(());
+    {
+        let mut active = state.active.lock().unwrap();
+        if state.updater.is_restarting() {
+            kill_group(pgid);
+            std::thread::spawn(move || {
+                let mut child = child;
+                let _ = child.wait();
+            });
+            return;
+        }
+        if let Some(old) = active.replace(ActiveSession {
+            id,
+            pgid,
+            cancel: cancel_tx,
+            exited: exited_rx,
+        }) {
+            kill_group(old.pgid);
+            let _ = old.cancel.send(());
+        }
     }
     let (pty_tx, mut pty_rx) = mpsc::channel::<Vec<u8>>(TERMINAL_OUTPUT_CHANNEL_CAPACITY);
     std::thread::spawn(move || {
@@ -1342,6 +1395,7 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
     std::thread::spawn(move || {
         let mut child = child;
         let _ = child.wait();
+        let _ = exited_tx.send(true);
         let _ = exit_tx.send(());
     });
     let (mut ws_tx, mut ws_rx) = socket.split();
@@ -1801,6 +1855,7 @@ mod tests {
             )
             .unwrap(),
             interactive_previews: interactive_preview::InteractivePreviews::default(),
+            updater: updater::Updater::new().unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),
         };
         let mut headers = HeaderMap::new();

@@ -13,7 +13,7 @@ function element<T extends HTMLElement>(id: string): T {
   return found as T;
 }
 
-export function setupSettings(options: { setSwitching: (value: boolean) => void }): void {
+export function setupSettings(options: { setSwitching: (value: boolean) => void; checkUpdates?: () => void }): void {
   setupLanguage();
   const toggle = element<HTMLButtonElement>("settings-toggle");
   const panel = element("settings-panel");
@@ -204,6 +204,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void 
     if (!panel.hidden) { closePanel(); return; }
     panel.hidden = false;
     toggle.setAttribute("aria-expanded", "true");
+    options.checkUpdates?.();
     showStatus(() => "");
     versionText = () => t("loadingVersion");
     version.textContent = versionText();

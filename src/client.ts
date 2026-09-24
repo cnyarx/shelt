@@ -17,6 +17,7 @@ import { uploadFileNameHeader } from "./security.ts";
 import { setSettingsVisible, setupSettings } from "./settings-ui.ts";
 import { installSheltiePeek } from "./sheltie-peek.ts";
 import { TerminalOutputPump } from "./terminal-output.ts";
+import { setupUpdates } from "./update-ui.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -156,6 +157,7 @@ function connect() {
     nextOutputPump.close();
     if (outputPump === nextOutputPump) outputPump = undefined;
     socket = undefined;
+    if (updates.active()) return;
     if (switchingTarget) {
       switchingTarget = false;
       currentTerminal.reset();
@@ -315,7 +317,8 @@ window.addEventListener("focus", () => {
 });
 
 installVisibleViewportSizing(scheduleResize);
-setupSettings({ setSwitching: (value) => { switchingTarget = value; } });
+setupSettings({ setSwitching: (value) => { switchingTarget = value; }, checkUpdates: () => { void updates.check(); } });
+const updates = setupUpdates();
 installSheltiePeek(requiredElement("settings-toggle"), requiredElement("settings-panel"), requiredElement("sheltie-peek"));
 
 void authStatus().then((status) => {
