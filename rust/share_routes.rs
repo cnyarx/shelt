@@ -121,6 +121,13 @@ pub async fn content(
         }
         return preview_secure(image.into_response(), image_kind);
     }
+    if kind.kind == "html" {
+        return preview_secure_with_csp(
+            bytes.into_response(),
+            kind,
+            interactive_preview::INTERACTIVE_CSP,
+        );
+    }
     preview_secure(bytes.into_response(), kind)
 }
 

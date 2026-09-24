@@ -48,8 +48,8 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
       const htmlShare = await (await manage("POST", htmlPath)).json();
       const htmlResponse = await fetch(`${base}/api/share/${htmlShare.url.slice(7)}`);
       expect(htmlResponse.status).toBe(200);
-      expect(htmlResponse.headers.get("content-security-policy")).toContain("sandbox allow-same-origin");
-      expect(htmlResponse.headers.get("content-security-policy")).not.toContain("allow-scripts");
+      expect(htmlResponse.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
+      expect(htmlResponse.headers.get("content-security-policy")).not.toContain("allow-same-origin");
       await manage("DELETE", htmlPath);
       const first = await (await manage("POST")).json();
       let key = first.url.slice(7);

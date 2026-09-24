@@ -506,6 +506,15 @@ const server = Bun.serve<SessionData>({
           content = await readShared(await realpath(resolve(share.path, "..", source)));
           if (content.type.kind !== "image" && content.type.kind !== "svg") throw new Error("Unavailable");
         }
+        if (content.type.kind === "html") {
+          return response(content.bytes, 200, {
+            "Content-Type": content.type.contentType,
+            "Cache-Control": "no-store",
+            "Content-Disposition": "inline",
+            "X-Shelt-Preview-Kind": content.type.kind,
+            "Content-Security-Policy": INTERACTIVE_CSP,
+          });
+        }
         return previewResponse(content.bytes, content.type.contentType, content.type.kind);
       } catch { return response("分享不存在、已过期或文件不可用", 404, { "Cache-Control": "no-store" }); }
     }

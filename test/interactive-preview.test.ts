@@ -92,9 +92,17 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
       }
       const shareResponse = await fetch(`${base}/api/shares?path=${encodeURIComponent(document)}`, { method: "POST", headers: { cookie, Origin: base } });
       const share = await shareResponse.json();
-      const shared = await fetch(`${base}/api/share/${share.url.slice(7)}?interactive=true`, { headers: { cookie } });
+      const shared = await fetch(`${base}/api/share/${share.url.slice(7)}`, { headers: { cookie } });
       expect(shared.status).toBe(200);
-      expect(shared.headers.get("content-security-policy")).not.toContain("allow-scripts");
+      expect(shared.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
+      expect(shared.headers.get("content-security-policy")).not.toContain("allow-same-origin");
+      expect(shared.headers.get("content-security-policy")).toContain("script-src 'unsafe-inline'");
+      const svgShareResponse = await fetch(`${base}/api/shares?path=${encodeURIComponent(join(directory, "picture.svg"))}`, { method: "POST", headers: { cookie, Origin: base } });
+      const svgShare = await svgShareResponse.json();
+      const sharedSvg = await fetch(`${base}/api/share/${svgShare.url.slice(7)}`, { headers: { cookie } });
+      expect(sharedSvg.status).toBe(200);
+      expect(sharedSvg.headers.get("content-security-policy")).toContain("sandbox allow-same-origin");
+      expect(sharedSvg.headers.get("content-security-policy")).not.toContain("allow-scripts");
       expect((await fetch(`${base}/api/preview-session/${grant.token}`, { method: "DELETE", headers: { cookie, Origin: base } })).status).toBe(204);
       expect((await fetch(`${base}${grant.url}`)).status).toBe(404);
       const revokedOnLogout = await (await create()).json();

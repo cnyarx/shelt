@@ -1456,7 +1456,19 @@ fn cookie_header(headers: &HeaderMap) -> Option<&str> {
 fn authenticated(state: &AppState, headers: &HeaderMap) -> bool {
     state.auth.authenticated(cookie_header(headers))
 }
-fn preview_secure(mut response: Response, preview_type: PreviewType) -> Response {
+fn preview_secure(response: Response, preview_type: PreviewType) -> Response {
+    preview_secure_with_csp(
+        response,
+        preview_type,
+        "default-src 'none'; style-src 'unsafe-inline'; sandbox allow-same-origin; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    )
+}
+fn preview_secure_with_csp(
+    mut response: Response,
+    preview_type: PreviewType,
+    csp: &'static str,
+) -> Response {
+    let csp = HeaderValue::from_static(csp);
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_TYPE,
@@ -1471,7 +1483,7 @@ fn preview_secure(mut response: Response, preview_type: PreviewType) -> Response
         "x-shelt-preview-kind",
         HeaderValue::from_static(preview_type.kind),
     );
-    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox allow-same-origin; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"));
+    headers.insert("content-security-policy", csp);
     headers.insert(
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),

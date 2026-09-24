@@ -2,7 +2,7 @@ use super::*;
 use rand_core::{OsRng, RngCore};
 use std::collections::HashMap;
 
-const INTERACTIVE_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http: https: blob:; style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; font-src http: https: data:; media-src http: https: data: blob:; connect-src http: https: ws: wss:; worker-src blob:; frame-src 'none'; object-src 'none'; sandbox allow-scripts; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+pub const INTERACTIVE_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http: https: blob:; style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; font-src http: https: data:; media-src http: https: data: blob:; connect-src http: https: ws: wss:; worker-src blob:; frame-src 'none'; object-src 'none'; sandbox allow-scripts; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
 #[derive(Clone)]
 struct Grant {

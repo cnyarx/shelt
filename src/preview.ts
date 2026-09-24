@@ -92,7 +92,7 @@ async function load(path: string): Promise<void> {
     }
     const frame = document.createElement("iframe");
     frame.src = apiUrl;
-    frame.sandbox.value = "allow-same-origin";
+    frame.sandbox.value = kind === "html" ? "allow-scripts" : "allow-same-origin";
     frame.title = path.split("/").pop() || t("preview");
     mount.replaceChildren(frame);
     frame.addEventListener("load", () => {
