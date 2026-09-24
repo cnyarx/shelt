@@ -1,5 +1,6 @@
 mod auth;
 mod edge_tts;
+mod herdr_events;
 mod interactive_preview;
 mod share_routes;
 mod shares;
@@ -90,6 +91,7 @@ struct AppState {
     shares: shares::ShareStore,
     targets: targets::TargetStore,
     interactive_previews: interactive_preview::InteractivePreviews,
+    herdr_events: herdr_events::HerdrEvents,
     updater: updater::Updater,
     failed_logins: Arc<Mutex<u32>>,
 }
@@ -379,6 +381,12 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&upload_dir)?;
     fs::set_permissions(&upload_dir, fs::Permissions::from_mode(0o700))?;
     let preview_roots = preview_roots()?;
+    let herdr_socket_path = env::var("HERDR_SOCKET_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".into()))
+                .join(".config/herdr/herdr.sock")
+        });
     let auth = AuthStore::load(
         state_dir().join("auth.json"),
         env::var("SHELT_SECURE_COOKIE").as_deref() == Ok("true"),
@@ -407,6 +415,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         shares: shares::ShareStore::load(state_dir().join("shares.json"))?,
         targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
         interactive_previews: interactive_preview::InteractivePreviews::default(),
+        herdr_events: herdr_events::HerdrEvents::new(herdr_socket_path),
         updater: updater::Updater::new()?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
@@ -441,6 +450,10 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/api/herdr/active",
             post(targets_active_handler).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
+        .route(
+            "/api/herdr/agent-events",
+            get(herdr_events::agent_events_handler),
         )
         .route(
             "/api/upload",
@@ -1867,6 +1880,7 @@ mod tests {
             )
             .unwrap(),
             interactive_previews: interactive_preview::InteractivePreviews::default(),
+            herdr_events: herdr_events::HerdrEvents::new(PathBuf::from("/nonexistent")),
             updater: updater::Updater::new().unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),
         };

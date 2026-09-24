@@ -19,6 +19,7 @@ import {
   resolveLaunch,
 } from "./launch.ts";
 import { previewRoots, previewType, wikiLinkCandidates, withinPreviewRoot } from "./preview-security.ts";
+import { HerdrEvents, type HerdrEventMessage } from "./herdr-events.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -66,6 +67,7 @@ if (typeof process.getuid === "function") {
   } catch {}
 }
 const launch = resolveLaunch({ env: process.env, which: Bun.which, passwdShell });
+const herdrEvents = new HerdrEvents(launch, process.env);
 
 await mkdir(uploadDir, { recursive: true, mode: 0o700 });
 await chmod(uploadDir, 0o700);
@@ -416,6 +418,27 @@ const server = Bun.serve<SessionData>({
     if (url.pathname === "/api/herdr/targets" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);
       return json({ mode: launch.mode, ...targets.list() }, 200, { "Cache-Control": "no-store" });
+    }
+
+    if (url.pathname === "/api/herdr/agent-events" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      if (launch.mode !== "herdr") return response("Herdr agent events unavailable", 503);
+      const encoder = new TextEncoder();
+      let unsubscribe: (() => void) | null = null;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (message: HerdrEventMessage) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(message)}\n\n`));
+          send({ type: "snapshot", agents: herdrEvents.snapshot() });
+          unsubscribe = herdrEvents.subscribe(send);
+          heartbeat = setInterval(() => { try { controller.enqueue(encoder.encode(": keep-alive\n\n")); } catch { /* stream closed */ } }, 20_000);
+        },
+        cancel() {
+          unsubscribe?.();
+          if (heartbeat) clearInterval(heartbeat);
+        },
+      });
+      return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
     }
 
     if (url.pathname === "/api/herdr/targets" && req.method === "POST") {

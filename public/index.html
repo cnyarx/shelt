@@ -63,6 +63,17 @@
         <p id="html-interactive-hint" class="settings-note" data-i18n="interactiveHint">允许运行 JavaScript、加载外部库和同目录资源。不可信文件可关闭；仅保存在此浏览器，匿名分享始终静态。</p>
       </section>
       <section>
+        <label class="settings-switch" for="notify-done">
+          <span data-i18n="notifyDone">任务完成通知（绿点）</span>
+          <input id="notify-done" type="checkbox" role="switch" aria-describedby="notify-hint" />
+        </label>
+        <label class="settings-switch" for="notify-blocked">
+          <span data-i18n="notifyBlocked">需要确认通知（红点）</span>
+          <input id="notify-blocked" type="checkbox" role="switch" aria-describedby="notify-hint" />
+        </label>
+        <p id="notify-hint" class="settings-note" data-i18n="notifyHint">Herdr agent 任务完成或需要确认时发送系统通知。仅保存在此浏览器；需保持终端页面开启。</p>
+      </section>
+      <section>
         <button id="password-toggle" class="settings-disclosure" type="button" aria-expanded="false" aria-controls="password-form"><span data-i18n="changePassword">修改密码</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></button>
         <form id="password-form" hidden>
           <input id="current-password" type="password" placeholder="当前密码" data-i18n-placeholder="currentPassword" aria-label="当前密码" data-i18n-aria-label="currentPassword" autocomplete="current-password" required />

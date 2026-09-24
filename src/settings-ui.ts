@@ -1,4 +1,13 @@
+import { agentNotificationsSupported, requestAgentNotificationPermission, syncAgentNotifications } from "./agent-notifications.ts";
 import { HTML_INTERACTIVE_KEY, htmlInteractiveEnabled, setHtmlInteractive } from "./preview-preferences.ts";
+import {
+  NOTIFY_BLOCKED_KEY,
+  NOTIFY_DONE_KEY,
+  notifyBlockedEnabled,
+  notifyDoneEnabled,
+  setNotifyBlocked,
+  setNotifyDone,
+} from "./notify-preferences.ts";
 import { localizedError, onLanguageChange, setupLanguage, t } from "./i18n.ts";
 
 type HerdrTarget = { id: string; name: string; remote: string; session: string | null };
@@ -29,6 +38,8 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   const status = element("settings-status");
   const version = element("settings-version");
   const interactivePreview = element<HTMLInputElement>("html-interactive");
+  const notifyDoneInput = element<HTMLInputElement>("notify-done");
+  const notifyBlockedInput = element<HTMLInputElement>("notify-blocked");
   const passwordToggle = element<HTMLButtonElement>("password-toggle");
   const passwordForm = element<HTMLFormElement>("password-form");
   const currentPassword = element<HTMLInputElement>("current-password");
@@ -57,7 +68,34 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   });
   window.addEventListener("storage", (event) => {
     if (event.key === HTML_INTERACTIVE_KEY || event.key === null) interactivePreview.checked = htmlInteractiveEnabled();
+    if (event.key === NOTIFY_DONE_KEY || event.key === null) notifyDoneInput.checked = notifyDoneEnabled();
+    if (event.key === NOTIFY_BLOCKED_KEY || event.key === null) notifyBlockedInput.checked = notifyBlockedEnabled();
   });
+
+  notifyDoneInput.checked = notifyDoneEnabled();
+  notifyBlockedInput.checked = notifyBlockedEnabled();
+  const applyNotifyToggle = async (input: HTMLInputElement, persist: (value: boolean) => void) => {
+    try {
+      persist(input.checked);
+      syncAgentNotifications();
+      if (!input.checked) {
+        showStatus(() => t("notifyOff"));
+        return;
+      }
+      if (!agentNotificationsSupported()) {
+        showStatus(() => t("notifyUnavailable"));
+        return;
+      }
+      const permission = await requestAgentNotificationPermission();
+      if (permission === "granted") showStatus(() => t("notifyOn"));
+      else if (permission === "denied") showStatus(() => t("notifyPermissionDenied"));
+      else showStatus(() => t("notifyPermissionPending"));
+    } catch {
+      showStatus(() => t("storageError"));
+    }
+  };
+  notifyDoneInput.addEventListener("change", () => { void applyNotifyToggle(notifyDoneInput, setNotifyDone); });
+  notifyBlockedInput.addEventListener("change", () => { void applyNotifyToggle(notifyBlockedInput, setNotifyBlocked); });
 
   const request = async (url: string, method: string, body?: unknown) => {
     const response = await fetch(url, {

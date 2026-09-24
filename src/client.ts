@@ -13,6 +13,7 @@ import {
 } from "./document-links.ts";
 import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
 import { installVisibleViewportSizing } from "./mobile-viewport.ts";
+import { setupAgentNotifications } from "./agent-notifications.ts";
 import { uploadFileNameHeader } from "./security.ts";
 import { setSettingsVisible, setupSettings } from "./settings-ui.ts";
 import { installSheltiePeek } from "./sheltie-peek.ts";
@@ -319,6 +320,7 @@ window.addEventListener("focus", () => {
 installVisibleViewportSizing(scheduleResize);
 setupSettings({ setSwitching: (value) => { switchingTarget = value; }, checkUpdates: () => { void updates.check(); } });
 const updates = setupUpdates();
+setupAgentNotifications();
 installSheltiePeek(requiredElement("settings-toggle"), requiredElement("settings-panel"), requiredElement("sheltie-peek"));
 
 void authStatus().then((status) => {

@@ -5,8 +5,12 @@ import { runInNewContext } from "node:vm";
 const source = new Bun.Transpiler({ loader: "ts" }).transformSync(
   readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/preview-preferences.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
+  readFileSync(new URL("../src/notify-preferences.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
+  readFileSync(new URL("../src/agent-notifications.ts", import.meta.url), "utf8")
+    .replace(/^import[\s\S]*?from ".*?";\n/gm, "")
+    .replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/settings-ui.ts", import.meta.url), "utf8")
-    .replace(/^import .*\n/gm, "")
+    .replace(/^import[\s\S]*?from ".*?";\n/gm, "")
     .replace("export function setupSettings", "function setupSettings")
     .replace("export function setSettingsVisible", "function setSettingsVisible"),
 );
@@ -41,6 +45,7 @@ const IDS = [
   "settings-toggle", "settings-panel", "settings-herdr", "target-list", "target-form",
   "target-name", "target-remote", "target-session", "target-submit", "target-cancel",
   "settings-status", "settings-version", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
+  "notify-done", "notify-blocked",
   "ui-language", "target-add", "password-toggle", "password-cancel",
 ];
 
@@ -68,9 +73,23 @@ test("settings panel manages targets, switches connection and changes password",
   const storageChanged = (event: { key: string | null }) => storageHandlers.forEach(handler => handler(event));
   let confirmations = 0;
   const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
+  const eventSources: { url: string; closed: boolean }[] = [];
   runInNewContext(`${source}\nsetSettingsVisible(true);\nsetupSettings(options);`, {
     localStorage: { getItem: (key: string) => preferences.get(key) ?? null, setItem: (key: string, value: string) => preferences.set(key, value) },
-    window: { addEventListener: (_type: string, handler: typeof storageChanged) => { storageHandlers.push(handler); } },
+    window: { addEventListener: (_type: string, handler: typeof storageChanged) => { storageHandlers.push(handler); }, focus() {} },
+    Notification: class {
+      static permission = "granted";
+      static requestPermission = async () => "granted";
+      onclick: (() => void) | null = null;
+      close() {}
+    },
+    EventSource: class {
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      closed = false;
+      constructor(public url: string) { eventSources.push(this); }
+      close() { this.closed = true; }
+    },
     document: {
       documentElement: { lang: "" },
       querySelectorAll: () => [],
@@ -118,6 +137,35 @@ test("settings panel manages targets, switches connection and changes password",
   storageChanged({ key: "shelt-html-interactive" });
   expect(get("html-interactive").checked).toBe(true);
   expect(get("settings-toggle").hidden).toBe(false);
+
+  expect(get("notify-done").checked).toBe(false);
+  expect(get("notify-blocked").checked).toBe(false);
+  expect(eventSources).toEqual([]);
+  get("notify-done").checked = true;
+  get("notify-done").handlers.change[0]();
+  await flush();
+  expect(preferences.get("shelt-notify-done")).toBe("true");
+  expect(get("settings-status").textContent).toContain("已开启系统通知");
+  expect(eventSources).toHaveLength(1);
+  expect(eventSources[0].url).toBe("/api/herdr/agent-events");
+  expect(eventSources[0].closed).toBe(false);
+  get("notify-blocked").checked = true;
+  get("notify-blocked").handlers.change[0]();
+  await flush();
+  expect(preferences.get("shelt-notify-blocked")).toBe("true");
+  expect(eventSources).toHaveLength(1);
+  get("notify-done").checked = false;
+  get("notify-done").handlers.change[0]();
+  await flush();
+  expect(get("settings-status").textContent).toContain("已关闭系统通知");
+  expect(eventSources[0].closed).toBe(false);
+  get("notify-blocked").checked = false;
+  get("notify-blocked").handlers.change[0]();
+  await flush();
+  expect(eventSources[0].closed).toBe(true);
+  preferences.set("shelt-notify-done", "true");
+  storageChanged({ key: "shelt-notify-done" });
+  expect(get("notify-done").checked).toBe(true);
   get("settings-toggle").handlers.click[0]();
   await flush();
   expect(get("settings-panel").hidden).toBe(false);
