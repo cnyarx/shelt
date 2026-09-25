@@ -231,6 +231,8 @@ function startTerminal() {
     theme: { background: "#000000" },
     linkHandler: {
       activate: (_event, url) => openLink(url),
+      hover: (_event, url) => { mount.title = url; },
+      leave: () => { mount.removeAttribute("title"); },
     },
   });
   fit = new FitAddon();

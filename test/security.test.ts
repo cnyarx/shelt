@@ -36,6 +36,8 @@ describe("terminal links", () => {
     expect(source).toContain('window.open(url, "_blank", "noopener,noreferrer")');
     expect(source).toContain("linkHandler: {");
     expect(source).toContain("activate: (_event, url) => openLink(url)");
+    expect(source).toContain("hover: (_event, url) => { mount.title = url; }");
+    expect(source).toContain("leave: () => { mount.removeAttribute(\"title\"); }");
     expect(source).toContain("registerLinkProvider(createWebLinkProvider(terminal, mount, openLink))");
   });
 });
