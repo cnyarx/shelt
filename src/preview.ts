@@ -194,8 +194,7 @@ function setupTableOfContents(): void {
   const toolbar = requiredElement("tts-toolbar");
   const placePanel = () => {
     const sharing = requiredElement("share-toolbar");
-    const languageToolbar = requiredElement("preview-language");
-    panel.style.top = `${Math.max(languageToolbar.getBoundingClientRect().bottom, toolbar.hidden ? 0 : toolbar.getBoundingClientRect().bottom, sharing.hidden ? 0 : sharing.getBoundingClientRect().bottom) + 8}px`;
+    panel.style.top = `${Math.max(toolbar.hidden ? 0 : toolbar.getBoundingClientRect().bottom, sharing.hidden ? 0 : sharing.getBoundingClientRect().bottom) + 8}px`;
   };
   new ResizeObserver(placePanel).observe(toolbar);
   placePanel();

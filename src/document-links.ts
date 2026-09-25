@@ -60,18 +60,23 @@ function unescapeShellPath(path: string): string {
   return path.replace(/\\([\\\s"'`])/g, "$1");
 }
 
-function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILink[] {
+export type WrappedCellOffset = { start: number; end: number; cell: number; line: number };
+export type WrappedLineText = { firstLineNumber: number; text: string; offsets: WrappedCellOffset[] };
+
+export function wrappedFirstLineNumber(terminal: Terminal, bufferLineNumber: number): number {
   let firstLineNumber = bufferLineNumber;
   while (firstLineNumber > 1 && terminal.buffer.active.getLine(firstLineNumber - 1)?.isWrapped) {
     firstLineNumber--;
   }
+  return firstLineNumber;
+}
 
-  const perTerminalCache = documentLinkCache.get(terminal) ?? new Map<number, ILink[]>();
-  const cached = perTerminalCache.get(firstLineNumber);
-  if (cached) return cached;
-
+/** Joins a buffer line with its wrapped continuation rows into one logical
+ * text, so links that span a narrow terminal are matched as a whole. */
+export function wrappedLineText(terminal: Terminal, bufferLineNumber: number): WrappedLineText {
+  const firstLineNumber = wrappedFirstLineNumber(terminal, bufferLineNumber);
   let text = "";
-  const offsets: Array<{ start: number; end: number; cell: number; line: number }> = [];
+  const offsets: WrappedCellOffset[] = [];
   let lineNumber = firstLineNumber;
   const bufferLength = terminal.buffer.active.length || bufferLineNumber;
   while (lineNumber <= bufferLength) {
@@ -89,6 +94,16 @@ function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILi
     }
     lineNumber++;
   }
+  return { firstLineNumber, text, offsets };
+}
+
+function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILink[] {
+  const perTerminalCache = documentLinkCache.get(terminal) ?? new Map<number, ILink[]>();
+  const firstCached = wrappedFirstLineNumber(terminal, bufferLineNumber);
+  const cached = perTerminalCache.get(firstCached);
+  if (cached) return cached;
+
+  const { firstLineNumber, text, offsets } = wrappedLineText(terminal, bufferLineNumber);
 
   const result = findDocumentPaths(text).flatMap<ILink>((match) => {
     const first = offsets.find((offset) => match.start >= offset.start && match.start < offset.end);

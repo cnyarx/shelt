@@ -135,7 +135,7 @@ export class PreviewTtsController {
     const handler = (event: Event) => {
       if (!this.targeting) return;
       const eventElement = event.target instanceof Element ? event.target : null;
-      if (eventElement?.closest("#tts-toolbar, #preview-language")) return;
+      if (eventElement?.closest("#tts-toolbar")) return;
       const target = eventElement?.closest<HTMLElement>(READABLE_SELECTOR) ?? null;
       const block = target ? this.blocks.find((item) => item.element === target) : undefined;
       if (!block) { this.setTargeting(false); return; }

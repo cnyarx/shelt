@@ -62,13 +62,13 @@ export function translateElements(root: ParentNode = document): void {
 }
 
 export function setupLanguage(): void {
-  const select = document.getElementById("ui-language") as HTMLSelectElement;
+  const select = document.getElementById("ui-language") as HTMLSelectElement | null;
   const update = () => {
     document.documentElement.lang = language;
     translateElements();
-    select.value = language;
+    if (select) select.value = language;
   };
-  select.addEventListener("change", () => {
+  select?.addEventListener("change", () => {
     try { setLanguage(select.value === "en" ? "en" : "zh-CN"); }
     catch { select.value = language; }
   });

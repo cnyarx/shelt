@@ -1,7 +1,6 @@
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { createSemanticAnsiState, normalizeSemanticAnsiChunk } from "./ansi.ts";
@@ -11,6 +10,7 @@ import {
   createDocumentLinkProvider,
   registerDocumentLinkMouseActivation,
 } from "./document-links.ts";
+import { createWebLinkProvider } from "./web-links.ts";
 import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
 import { installVisibleViewportSizing } from "./mobile-viewport.ts";
 import { setupAgentNotifications } from "./agent-notifications.ts";
@@ -241,10 +241,7 @@ function startTerminal() {
   terminal.open(mount);
   installTerminalTouchScrolling(mount);
   terminal.loadAddon(new CanvasAddon());
-  terminal.loadAddon(new WebLinksAddon((_event, url) => openLink(url), {
-    hover: (_event, url) => { mount.title = url; },
-    leave: () => { mount.removeAttribute("title"); },
-  }));
+  terminal.registerLinkProvider(createWebLinkProvider(terminal, mount, openLink));
   terminal.registerLinkProvider(createDocumentLinkProvider(terminal, mount, openLink));
   registerDocumentLinkMouseActivation(terminal, mount, openLink);
   createDocumentLinkIndicatorLayer(terminal, mount);
