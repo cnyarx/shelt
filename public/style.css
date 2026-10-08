@@ -7,6 +7,24 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 .document-link-indicators { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 .document-link-indicators span { position: absolute; box-sizing: border-box; border-bottom: 2px solid #31bafd; cursor: pointer; pointer-events: auto; }
 .xterm, .xterm-viewport, .xterm-screen { height: 100%; }
+#terminal-tts-toolbar { position: fixed; top: 10px; right: 52px; z-index: 31; color: #e6edf3; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+#terminal-tts-toggle { display: grid; place-items: center; width: 34px; height: 34px; margin-left: auto; border: 1px solid rgb(255 255 255 / 14%); border-radius: 50%; background: rgb(20 24 28 / 90%); color: #c9d1d9; cursor: pointer; }
+#terminal-tts-toggle svg { width: 19px; height: 19px; fill: currentColor; }
+#terminal-tts-controls { display: none; width: min(380px, calc(100vw - 28px)); box-sizing: border-box; margin-top: 8px; padding: 12px; border: 1px solid #30363d; border-radius: 12px; background: rgb(16 20 24 / 96%); box-shadow: 0 12px 32px #0008; }
+#terminal-tts-toolbar.expanded #terminal-tts-controls { display: block; }
+.terminal-tts-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.terminal-tts-actions button, .terminal-tts-actions select { min-height: 32px; border: 1px solid #30363d; border-radius: 7px; padding: 4px 8px; color: inherit; background: #171e25; font: inherit; }
+.terminal-tts-actions button { cursor: pointer; }
+.terminal-tts-actions button[aria-pressed="true"] { color: #04202e; background: #31bafd; border-color: #31bafd; }
+.terminal-tts-actions button:disabled { opacity: .45; cursor: default; }
+.terminal-tts-actions label { display: flex; gap: 5px; align-items: center; }
+.terminal-tts-actions select { max-width: 190px; }
+#terminal-tts-toolbar button:focus-visible, #terminal-tts-toolbar select:focus-visible { outline: 2px solid #31bafd; outline-offset: 2px; }
+#terminal-tts-status { margin: 0; color: #9ed9f5; overflow-wrap: anywhere; }
+.terminal-tts-note { color: #8b949e; font-size: 11px; margin: 7px 0 0; }
+.terminal-speech-highlight { position: absolute; pointer-events: none; background: #31bafd20; outline: 1px solid #31bafd80; z-index: 12; }
+#terminal.terminal-speech-targeting, #terminal.terminal-speech-targeting .xterm-screen { cursor: crosshair !important; }
+@media (max-width: 500px) { #terminal-tts-controls { margin-right: -38px; } }
 @media (hover: none) and (pointer: coarse) {
   #terminal, #terminal .xterm, #terminal .xterm-screen { touch-action: pinch-zoom; }
 }

@@ -18,6 +18,7 @@ import { uploadFileNameHeader } from "./security.ts";
 import { setSettingsVisible, setupSettings } from "./settings-ui.ts";
 import { installSheltiePeek } from "./sheltie-peek.ts";
 import { TerminalOutputPump } from "./terminal-output.ts";
+import { TerminalTtsController } from "./terminal-tts.ts";
 import { setupUpdates } from "./update-ui.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -45,6 +46,7 @@ let terminal: Terminal | undefined;
 let fit: FitAddon | undefined;
 let socket: WebSocket | undefined;
 let outputPump: TerminalOutputPump | undefined;
+let terminalTts: TerminalTtsController | undefined;
 let resizeTimer: ReturnType<typeof setTimeout> | undefined;
 let switchingTarget = false;
 
@@ -107,6 +109,7 @@ async function authStatus(): Promise<{ setupRequired: boolean; authenticated: bo
 
 function showAuth(required: boolean, message = "") {
   setupRequired = required;
+  terminalTts?.setVisible(false);
   outputPump?.close();
   outputPump = undefined;
   socket?.close();
@@ -156,6 +159,7 @@ function connect() {
   nextSocket.addEventListener("close", () => {
     if (socket !== nextSocket) return;
     nextOutputPump.close();
+    terminalTts?.stop();
     if (outputPump === nextOutputPump) outputPump = undefined;
     socket = undefined;
     if (updates.active()) return;
@@ -217,6 +221,7 @@ function startTerminal() {
   mount.hidden = false;
   setSettingsVisible(true);
   if (terminal) {
+    terminalTts?.setVisible(true);
     fit?.fit();
     terminal.focus();
     connect();
@@ -243,6 +248,8 @@ function startTerminal() {
   terminal.open(mount);
   installTerminalTouchScrolling(mount);
   terminal.loadAddon(new CanvasAddon());
+  terminalTts = new TerminalTtsController(terminal, mount);
+  terminalTts.setVisible(true);
   terminal.registerLinkProvider(createWebLinkProvider(terminal, mount, openLink));
   terminal.registerLinkProvider(createDocumentLinkProvider(terminal, mount, openLink));
   registerDocumentLinkMouseActivation(terminal, mount, openLink);
