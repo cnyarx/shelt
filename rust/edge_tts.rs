@@ -8,18 +8,21 @@ use std::{
 use tokio_tungstenite::{
     tungstenite::{
         client::IntoClientRequest,
-        http::{header, HeaderValue},
+        error::Error as WsError,
+        http::{header, HeaderValue, StatusCode},
         Message,
     },
     Connector,
 };
 
-const WSS_BASE: &str = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+const WSS_BASE: &str = "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1";
 const TRUSTED_CLIENT_TOKEN: &str = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
 const WINDOWS_EPOCH_TICKS: u128 = 116_444_736_000_000_000;
 const GEC_TICK_INTERVAL: u128 = 3_000_000_000;
 const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 10; HD1913) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.7499.193 Mobile Safari/537.36 EdgA/143.0.3650.125";
 const ORIGIN: &str = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold";
+const CONNECT_ATTEMPTS: u32 = 4;
+const CONNECT_RETRY_BASE_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn unix_time() -> std::time::Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
@@ -81,6 +84,9 @@ fn tls_connector() -> Result<Connector, rustls::Error> {
     roots.add(CertificateDer::from(
         &include_bytes!("digicert-global-root-g2.der")[..],
     ))?;
+    roots.add(CertificateDer::from(
+        &include_bytes!("digicert-global-root-g3.der")[..],
+    ))?;
     let config = ClientConfig::builder()
         .with_root_certificates(roots)
         .with_no_client_auth();
@@ -101,18 +107,62 @@ pub fn extract_audio_from_binary(bytes: &[u8], turn_start: bool, response: bool)
     Some(&bytes[header_len..])
 }
 
+fn websocket_url_with(conn_id: &str, sec_ms_gec: &str) -> String {
+    format!(
+        "{WSS_BASE}?Ocp-Apim-Subscription-Key={TRUSTED_CLIENT_TOKEN}&ConnectionId={conn_id}&Sec-MS-GEC={sec_ms_gec}&Sec-MS-GEC-Version=1-130.0.2849.68"
+    )
+}
+
+fn websocket_url() -> String {
+    websocket_url_with(&request_id(), &gen_sec_ms_gec())
+}
+
+fn is_rate_limited(error: &(dyn std::error::Error + Send + Sync + 'static)) -> bool {
+    error
+        .downcast_ref::<WsError>()
+        .is_some_and(|error| {
+            matches!(error, WsError::Http(response) if response.status() == StatusCode::TOO_MANY_REQUESTS)
+        })
+}
+
 pub async fn synthesize(
     text: &str,
     voice_name: &str,
     rate_percent: i32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    let sec_ms_gec = gen_sec_ms_gec();
-    let conn_id = request_id();
-    let url = format!(
-        "{WSS_BASE}&ConnectionId={conn_id}&Sec-MS-GEC={sec_ms_gec}&Sec-MS-GEC-Version=1-130.0.2849.68"
-    );
+    let mut delay = CONNECT_RETRY_BASE_DELAY;
+    let mut last_error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+    for attempt in 0..CONNECT_ATTEMPTS {
+        if attempt > 0 {
+            tokio::time::sleep(delay).await;
+            delay *= 2;
+        }
+        match synthesize_once(text, voice_name, rate_percent).await {
+            Ok(audio) => return Ok(audio),
+            Err(error) => {
+                if !is_rate_limited(error.as_ref()) {
+                    return Err(error);
+                }
+                if attempt + 1 < CONNECT_ATTEMPTS {
+                    eprintln!(
+                        "TTS endpoint rate limited; retrying (attempt {}/{})",
+                        attempt + 1,
+                        CONNECT_ATTEMPTS
+                    );
+                }
+                last_error = Some(error);
+            }
+        }
+    }
+    Err(last_error.expect("retry loop only exits after an error"))
+}
 
-    let mut req = url.into_client_request()?;
+async fn synthesize_once(
+    text: &str,
+    voice_name: &str,
+    rate_percent: i32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut req = websocket_url().into_client_request()?;
     let headers = req.headers_mut();
     headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
@@ -172,6 +222,65 @@ pub async fn synthesize(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn websocket_url_uses_current_edge_tts_endpoint() {
+        let url = websocket_url();
+        let prefix = format!(
+            "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1?Ocp-Apim-Subscription-Key={TRUSTED_CLIENT_TOKEN}&ConnectionId="
+        );
+        assert!(url.starts_with(&prefix));
+        assert!(url.contains("&Sec-MS-GEC="));
+        assert!(url.ends_with("&Sec-MS-GEC-Version=1-130.0.2849.68"));
+    }
+
+    #[test]
+    fn websocket_url_builds_expected_query() {
+        let url = websocket_url_with("0123feed", "A1B2C3D4");
+        let (base, query) = url.split_once('?').expect("query separator");
+        assert_eq!(
+            base,
+            "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1"
+        );
+        let params: Vec<&str> = query.split('&').collect();
+        assert_eq!(
+            params[0],
+            format!("Ocp-Apim-Subscription-Key={TRUSTED_CLIENT_TOKEN}")
+        );
+        assert!(params.contains(&"ConnectionId=0123feed"));
+        assert!(params.contains(&"Sec-MS-GEC=A1B2C3D4"));
+        assert!(params.contains(&"Sec-MS-GEC-Version=1-130.0.2849.68"));
+        assert!(!query.contains("&&"));
+    }
+
+    #[test]
+    fn rate_limited_detects_http_429() {
+        use tokio_tungstenite::tungstenite::http::Response;
+        let response = Response::builder()
+            .status(StatusCode::TOO_MANY_REQUESTS)
+            .body(None)
+            .unwrap();
+        let error: Box<dyn std::error::Error + Send + Sync> =
+            Box::new(WsError::Http(Box::new(response)));
+        assert!(is_rate_limited(error.as_ref()));
+    }
+
+    #[test]
+    fn rate_limited_ignores_other_http_errors() {
+        use tokio_tungstenite::tungstenite::http::Response;
+        let response = Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(None)
+            .unwrap();
+        let error: Box<dyn std::error::Error + Send + Sync> =
+            Box::new(WsError::Http(Box::new(response)));
+        assert!(!is_rate_limited(error.as_ref()));
+    }
+
+    #[test]
+    fn tls_connector_loads_embedded_roots() {
+        assert!(tls_connector().is_ok());
+    }
 
     #[test]
     fn http_date_at_epoch() {
