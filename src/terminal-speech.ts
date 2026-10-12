@@ -11,6 +11,7 @@ const FOOTER = /(?:Context\s+[\d.]+%|(?:YOLO|auto[- ]?edit|plan|default) mode|sh
 const COMPRESSION = /^(?:Chat history compress|Compression was not beneficial|Could not compress chat history|Nothing to compress\.|Context compressed|聊天历史.{0,8}压缩|对话历史.{0,8}压缩)/iu;
 const PREFIX = /^[◆∵∴>\u25b3\u25cf\u2715\u2713\u21bb\u25ce\u203b?⊷ox$-]/u;
 const VERTICAL = /^[│┃║]$/u;
+const SCROLLBAR = /^[│┃║█▇▆▅▄▃▂▁▏▎▍▌▋▊▉]$/u;
 const HORIZONTAL = /^[\s─━═╭╮╰╯┌┐└┘├┤┬┴┼│┃║]+$/u;
 
 export function readSpeechGrid(terminal: Terminal): SpeechGrid {
@@ -49,26 +50,32 @@ export function speechView(grid: SpeechGrid, anchor = { x: grid.cursorX, y: grid
     if (count >= Math.max(4, (height - 1) * 0.65) && VERTICAL.test(grid.lines[height - 2]?.[x] ?? "")) separators.push(x);
   }
   const left = (separators.findLast((x) => x < anchor.x) ?? -1) + 1;
-  const right = separators.find((x) => x >= anchor.x) ?? width;
-  if (right - left < 12) return null;
+  const paneRight = separators.find((x) => x >= anchor.x) ?? width;
+  if (paneRight - left < 12) return null;
 
-  let footer = -1;
-  for (let row = height - 1; row >= Math.max(0, height - 8); row--) {
-    if (FOOTER.test(lineText(grid, row, left, right))) footer = row;
+  let bottom = -1;
+  let right = paneRight;
+  const inputTops = new Set<number>();
+  // Herdr can letterbox a smaller application's viewport inside a larger client.
+  for (let footer = height - 1; footer > 2; footer--) {
+    if (!FOOTER.test(lineText(grid, footer, left, paneRight))) continue;
+    const borders: { row: number; right: number }[] = [];
+    for (let row = Math.max(1, footer - 12); row < footer; row++) {
+      const text = lineText(grid, row, left, paneRight);
+      if (!HORIZONTAL.test(text) || (text.match(/[─━═]/gu)?.length ?? 0) < 12) continue;
+      let edge = paneRight;
+      while (edge > left && !(grid.lines[row]?.[edge - 1] ?? "").trim()) edge--;
+      borders.push({ row, right: edge });
+    }
+    const upper = borders.at(-2), lower = borders.at(-1);
+    if (!upper || !lower || upper.right !== lower.right || lower.row - upper.row < 2) continue;
+    inputTops.add(upper.row);
+    if (bottom < 0) { bottom = upper.row; right = upper.right; }
   }
-  if (footer < 0) return null;
-  const borders: number[] = [];
-  for (let row = Math.max(1, footer - 12); row < footer; row++) {
-    const text = lineText(grid, row, left, right);
-    if (HORIZONTAL.test(text) && (text.match(/[─━═]/gu)?.length ?? 0) >= (right - left) * 0.65) borders.push(row);
-  }
-  // Qwen keeps its input box visible even while the assistant is streaming.
-  if (borders.length < 2) return null;
-  const bottom = borders[borders.length - 2]!;
-  if (bottom < 2) return null;
+  if (bottom < 2 || inputTops.size !== 1 || anchor.x >= right) return null;
   const top = separators.length ? 1 : 0;
   for (let row = top; row < bottom; row++) {
-    if (FOOTER.test(lineText(grid, row, left, right))) return null;
+    if (FOOTER.test(lineText(grid, row, left, Math.min(left + 10, right)))) return null;
   }
   let marker: number | undefined;
   for (let row = top; row < bottom; row++) {
@@ -80,13 +87,19 @@ export function speechView(grid: SpeechGrid, anchor = { x: grid.cursorX, y: grid
     }
   }
   marker ??= previous?.left === left && previous.right === right ? previous.marker : left + 2;
+  let textRight = right;
+  for (let column = right - 1; column >= Math.max(marker + 2, right - 2); column--) {
+    let barRows = 0;
+    for (let row = top; row < bottom; row++) if (SCROLLBAR.test(grid.lines[row]?.[column] ?? "")) barRows++;
+    if (barRows >= Math.max(4, (bottom - top) * 0.65)) textRight = column;
+  }
   const rows: SpeechRow[] = [];
   for (let row = top; row < bottom; row++) {
-    const prefix = lineText(grid, row, marker, Math.min(marker + 2, right));
-    const text = lineText(grid, row, marker + 2, right);
+    const prefix = lineText(grid, row, marker, Math.min(marker + 2, textRight));
+    const text = lineText(grid, row, marker + 2, textRight);
     const outer = lineText(grid, row, left, marker);
     if (outer.trim()) {
-      rows.push({ row, text: lineText(grid, row, left, right), kind: "boundary" });
+      rows.push({ row, text: lineText(grid, row, left, textRight), kind: "boundary" });
     } else if (/^◆\s?$/u.test(prefix)) {
       rows.push({ row, text, kind: COMPRESSION.test(text) ? "boundary" : "start" });
     } else if (prefix.trim()) {

@@ -59,6 +59,58 @@ describe("Qwen screen speech", () => {
     expect(transcript.blockAt(blocks[1]!.start + 3)).toEqual(blocks[1]);
   });
 
+  test("showing or hiding the Qwen scrollbar does not change reply text or frame alignment", () => {
+    const sample = grid(["  ◆ Assistant reply with a stable beginning.", "    Continue the same reply.", "      │ directory tree stays in the content", "    Final sentence."]);
+    const first = speechView(sample)!;
+    const shown = { ...sample, lines: sample.lines.map((row) => [...row]) };
+    for (let row = first.region.top; row < first.region.bottom; row++) shown.lines[row]![first.region.right - 1] = row < 7 ? "│" : "█";
+    const second = speechView(shown)!;
+    expect(second.region).toEqual(first.region);
+    expect(second.context).toBe(first.context);
+    expect(second.rows).toEqual(first.rows);
+    const transcript = new SpeechTranscript();
+    expect(transcript.update(first)).toBe(true);
+    const blocks = transcript.blocks();
+    expect(transcript.update(second)).toBe(true);
+    expect(transcript.blocks()).toEqual(blocks);
+    expect(transcript.update(first)).toBe(true);
+    expect(transcript.blocks()).toEqual(blocks);
+    expect(blocks[0]!.text).toContain("│ directory tree");
+  });
+
+  test("preserves a single literal pipe at the right edge instead of treating it as a scrollbar", () => {
+    const sample = grid(["  ◆ Reply with literal table syntax."]);
+    sample.lines[1]![109] = "│";
+    expect(speechView(sample)!.rows[0]!.text.endsWith("│")).toBe(true);
+  });
+
+  test("uses the actual input borders when Herdr letterboxes a smaller Qwen viewport", () => {
+    const sample = grid(["  ◆ The real reply is smaller than the browser.", "    Continued reply."]);
+    const first = speechView(sample)!;
+    const padded = {
+      ...sample,
+      lines: Array.from({ length: 60 }, (_, row) => {
+        const cells = [...(sample.lines[row] ?? Array(110).fill(" ")), ...Array(90).fill(" ")];
+        if (row > 0) cells[17] = "│";
+        return cells;
+      }),
+    };
+    for (let row = first.region.top; row < first.region.bottom; row++) padded.lines[row]![109] = row < 8 ? "│" : "█";
+    const result = speechView(padded)!;
+    expect(result.region).toEqual(first.region);
+    expect(result.context).toBe(first.context);
+    expect(result.rows).toEqual(first.rows);
+    expect(speechView(padded, { x: 150, y: 3 })).toBeNull();
+  });
+
+  test("footer strings inside tool output do not invalidate the real conversation region", () => {
+    const result = speechView(grid(["  ◆ Actual reply.", "  ✓ Shell inspect-ui", "    const label = 'YOLO mode';", "    Context 25.7% is a string in tool output"]))!;
+    expect(result).not.toBeNull();
+    const transcript = new SpeechTranscript();
+    expect(transcript.update(result)).toBe(true);
+    expect(transcript.blocks().map(block => block.text)).toEqual(["Actual reply."]);
+  });
+
   test("ignores the input, sidebar and plain shells without Qwen chrome", () => {
     const sample = grid(["  ◆ Hello reply", "    next line"]);
     expect(speechView(sample, { x: 5, y: 4 })).toBeNull();
