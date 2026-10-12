@@ -89,7 +89,7 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
     await writeFile(fakeHerdr, "#!/bin/sh\nsleep 30\n");
     await chmod(fakeHerdr, 0o755);
     const fake = await fakeHerdrServer(socketPath);
-    const port = backend === "rust" ? 34802 : 34801;
+    const port = backend === "rust" ? 24802 : 24801;
     const base = `http://127.0.0.1:${port}`;
     const env = {
       ...process.env,
@@ -156,7 +156,7 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
 
   test(`${backend}: agent event stream is unavailable in shell mode`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "shelt-herdr-shell-"));
-    const port = backend === "rust" ? 34804 : 34803;
+    const port = backend === "rust" ? 24804 : 24803;
     const base = `http://127.0.0.1:${port}`;
     const env = {
       ...process.env,

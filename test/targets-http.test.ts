@@ -6,7 +6,7 @@ import { join } from "node:path";
 for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
   test(`${backend}: target CRUD, activation, persistence and password change`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "shelt-targets-http-"));
-    const port = backend === "rust" ? 34802 : 34801;
+    const port = backend === "rust" ? 24802 : 24801;
     const base = `http://127.0.0.1:${port}`;
     const env = { ...process.env, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: directory, SHELT_UPLOAD_DIR: join(directory, "uploads"), SHELT_PREVIEW_ROOTS: directory, SHELT_PUBLIC_HOSTS: `127.0.0.1:${port}`, SHELT_MODE: "shell" };
     const start = () => Bun.spawn(backend === "rust" ? ["target/debug/shelt", "foreground"] : ["bun", "src/server.ts"], { env, stdout: "pipe", stderr: "pipe" });
@@ -104,7 +104,7 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
     const argvFile = join(directory, "argv.txt");
     await writeFile(fakeHerdr, '#!/bin/sh\nprintf "%s\\n" "$@" > "$SHELT_FAKE_ARGV"\nsleep 30\n');
     await chmod(fakeHerdr, 0o755);
-    const port = backend === "rust" ? 34804 : 34803;
+    const port = backend === "rust" ? 24804 : 24803;
     const base = `http://127.0.0.1:${port}`;
     const env = { ...process.env, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: directory, SHELT_UPLOAD_DIR: join(directory, "uploads"), SHELT_PREVIEW_ROOTS: directory, SHELT_PUBLIC_HOSTS: `127.0.0.1:${port}`, SHELT_MODE: "herdr", SHELT_HERDR_BIN: fakeHerdr, SHELT_FAKE_ARGV: argvFile };
     const child = Bun.spawn(backend === "rust" ? ["target/debug/shelt", "foreground"] : ["bun", "src/server.ts"], { env, stdout: "pipe", stderr: "pipe" });

@@ -6,7 +6,7 @@ import { join } from "node:path";
 for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
   test(`${backend}: /api/update requires auth, stays read-only in source mode and is not cached`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "shelt-update-http-"));
-    const port = backend === "rust" ? 34812 : 34811;
+    const port = backend === "rust" ? 24812 : 24811;
     const base = `http://127.0.0.1:${port}`;
     const env = {
       ...process.env, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: directory,

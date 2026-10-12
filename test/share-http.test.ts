@@ -12,7 +12,7 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
     await writeFile(join(directory, "pic.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
     await writeFile(join(directory, "secret.md"), "private");
     await symlink("/etc/passwd", join(directory, "escape.md"));
-    const port = backend === "rust" ? 34792 : 34791;
+    const port = backend === "rust" ? 24792 : 24791;
     const base = `http://127.0.0.1:${port}`;
     const env = { ...process.env, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: directory, SHELT_UPLOAD_DIR: join(directory, "uploads"), SHELT_PREVIEW_ROOTS: directory, SHELT_PUBLIC_HOSTS: `127.0.0.1:${port}`, SHELT_MODE: "shell" };
     const start = () => Bun.spawn(backend === "rust" ? ["target/debug/shelt", "foreground"] : ["bun", "src/server.ts"], { env, stdout: "pipe", stderr: "pipe" });

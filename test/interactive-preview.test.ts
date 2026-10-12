@@ -22,7 +22,7 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
     const fakeHerdr = join(directory, "fake-herdr");
     await writeFile(fakeHerdr, '#!/bin/sh\nsleep 30\n');
     await chmod(fakeHerdr, 0o755);
-    const port = backend === "rust" ? 34812 : 34811;
+    const port = backend === "rust" ? 24812 : 24811;
     const base = `http://127.0.0.1:${port}`;
     const child = Bun.spawn(backend === "rust" ? ["target/debug/shelt", "foreground"] : ["bun", "src/server.ts"], {
       env: { ...process.env, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: state, SHELT_UPLOAD_DIR: join(directory, "uploads"), SHELT_PREVIEW_ROOTS: directory, SHELT_PUBLIC_HOSTS: `127.0.0.1:${port}`, SHELT_ALLOWED_ORIGINS: "null", SHELT_MODE: "herdr", SHELT_HERDR_BIN: fakeHerdr }, stdout: "pipe", stderr: "pipe",
