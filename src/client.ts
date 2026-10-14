@@ -11,6 +11,7 @@ import {
   registerDocumentLinkMouseActivation,
 } from "./document-links.ts";
 import { createWebLinkProvider } from "./web-links.ts";
+import { installOscLinkHandling } from "./osc-links.ts";
 import { installTerminalTouchScrolling } from "./mobile-scroll.ts";
 import { installVisibleViewportSizing } from "./mobile-viewport.ts";
 import { setupAgentNotifications } from "./agent-notifications.ts";
@@ -234,11 +235,6 @@ function startTerminal() {
     allowProposedApi: true,
     scrollback: 0,
     theme: { background: "#000000" },
-    linkHandler: {
-      activate: (_event, url) => openLink(url),
-      hover: (_event, url) => { mount.title = url; },
-      leave: () => { mount.removeAttribute("title"); },
-    },
   });
   fit = new FitAddon();
   const unicode11 = new Unicode11Addon();
@@ -250,6 +246,7 @@ function startTerminal() {
   terminal.loadAddon(new CanvasAddon());
   terminalTts = new TerminalTtsController(terminal, mount);
   terminalTts.setVisible(true);
+  installOscLinkHandling(terminal, mount, openLink);
   terminal.registerLinkProvider(createWebLinkProvider(terminal, mount, openLink));
   terminal.registerLinkProvider(createDocumentLinkProvider(terminal, mount, openLink));
   registerDocumentLinkMouseActivation(terminal, mount, openLink);

@@ -34,10 +34,7 @@ describe("terminal links", () => {
   test("opens plain and OSC 8 links without the xterm confirmation dialog", async () => {
     const source = await Bun.file(new URL("../src/client.ts", import.meta.url)).text();
     expect(source).toContain('window.open(url, "_blank", "noopener,noreferrer")');
-    expect(source).toContain("linkHandler: {");
-    expect(source).toContain("activate: (_event, url) => openLink(url)");
-    expect(source).toContain("hover: (_event, url) => { mount.title = url; }");
-    expect(source).toContain("leave: () => { mount.removeAttribute(\"title\"); }");
+    expect(source).toContain("installOscLinkHandling(terminal, mount, openLink)");
     expect(source).toContain("registerLinkProvider(createWebLinkProvider(terminal, mount, openLink))");
   });
 });
