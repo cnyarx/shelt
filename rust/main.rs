@@ -12,7 +12,7 @@ use axum::{
     body::Bytes,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        DefaultBodyLimit, Query, State,
+        ConnectInfo, DefaultBodyLimit, Query, State,
     },
     http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
@@ -506,11 +506,14 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
         let server = async move {
-            axum::serve(listener, app)
-                .with_graceful_shutdown(async {
-                    let _ = shutdown_rx.await;
-                })
-                .await
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .with_graceful_shutdown(async {
+                let _ = shutdown_rx.await;
+            })
+            .await
         };
         tokio::pin!(server);
         tokio::select! {
@@ -732,7 +735,20 @@ fn normalized_session(session: Option<String>) -> Option<String> {
     session.filter(|value| !value.is_empty())
 }
 
-async fn targets_list_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+fn normalize_client_ip(peer: std::net::SocketAddr) -> String {
+    match peer.ip() {
+        std::net::IpAddr::V6(ip) => ip
+            .to_ipv4_mapped()
+            .map_or_else(|| ip.to_string(), |v4| v4.to_string()),
+        ip => ip.to_string(),
+    }
+}
+
+async fn targets_list_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
     if !allowed_host(&state, &headers) {
         return secure((StatusCode::FORBIDDEN, "Forbidden host").into_response());
     }
@@ -743,6 +759,7 @@ async fn targets_list_handler(State(state): State<AppState>, headers: HeaderMap)
     let mut response = secure(
         Json(serde_json::json!({
             "mode": state.launch.mode,
+            "clientIp": normalize_client_ip(peer),
             "active": active,
             "targets": targets,
         }))

@@ -9,6 +9,7 @@ const source = new Bun.Transpiler({ loader: "ts" }).transformSync(
   readFileSync(new URL("../src/agent-notifications.ts", import.meta.url), "utf8")
     .replace(/^import[\s\S]*?from ".*?";\n/gm, "")
     .replaceAll("export ", "") + "\n" +
+  readFileSync(new URL("../src/target-fields.ts", import.meta.url), "utf8").replaceAll("export ", "") + "\n" +
   readFileSync(new URL("../src/settings-ui.ts", import.meta.url), "utf8")
     .replace(/^import[\s\S]*?from ".*?";\n/gm, "")
     .replace("export function setupSettings", "function setupSettings")
@@ -36,6 +37,7 @@ function fakeElement(tag = "div"): any {
     contains(node: any) { for (let current = node; current; current = current.parent) if (current === element) return true; return false; },
     focus() {},
     select() {},
+    setSelectionRange() {},
     reset() {},
   };
   return element;
@@ -43,7 +45,7 @@ function fakeElement(tag = "div"): any {
 
 const IDS = [
   "settings-toggle", "settings-panel", "settings-herdr", "target-list", "target-form",
-  "target-name", "target-remote", "target-session", "target-submit", "target-cancel",
+  "target-name", "target-remote", "target-fill-ip", "target-session", "target-submit", "target-cancel",
   "settings-status", "settings-version", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
   "notify-done", "notify-blocked",
   "ui-language", "target-add", "password-toggle", "password-cancel",
@@ -63,6 +65,7 @@ test("settings panel manages targets, switches connection and changes password",
   elements.get("settings-panel").hidden = true;
   const state = {
     mode: "herdr",
+    clientIp: "127.0.0.1",
     active: "local",
     targets: [{ id: "abcd1234", name: "开发机", remote: "dev@10.0.0.2", session: "work" }],
   };
@@ -176,6 +179,14 @@ test("settings panel manages targets, switches connection and changes password",
   get("target-add").handlers.click[0]();
   expect(get("target-form").hidden).toBe(false);
   expect(get("target-add").attributes["aria-expanded"]).toBe("true");
+  expect(get("target-fill-ip").hidden).toBe(false);
+  expect(get("target-fill-ip").title).toContain("127.0.0.1");
+  get("target-remote").value = "ops@";
+  get("target-fill-ip").handlers.click[0]();
+  expect(get("target-remote").value).toBe("ops@127.0.0.1");
+  get("target-remote").value = "";
+  get("target-fill-ip").handlers.click[0]();
+  expect(get("target-remote").value).toBe("127.0.0.1");
   get("target-name").value = "编辑中";
   get("ui-language").value = "en";
   get("ui-language").handlers.change[0]();

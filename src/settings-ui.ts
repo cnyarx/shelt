@@ -9,9 +9,10 @@ import {
   setNotifyDone,
 } from "./notify-preferences.ts";
 import { localizedError, onLanguageChange, setupLanguage, t } from "./i18n.ts";
+import { fillRemoteHost } from "./target-fields.ts";
 
 type HerdrTarget = { id: string; name: string; remote: string; session: string | null };
-type TargetsResponse = { mode: string; active: string; targets: HerdrTarget[] };
+type TargetsResponse = { mode: string; clientIp?: string | null; active: string; targets: HerdrTarget[] };
 type BuildVersion = { version: string; commit: string; dirty: boolean };
 
 const LOCAL_ID = "local";
@@ -32,6 +33,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   const form = element<HTMLFormElement>("target-form");
   const nameInput = element<HTMLInputElement>("target-name");
   const remoteInput = element<HTMLInputElement>("target-remote");
+  const fillIp = element<HTMLButtonElement>("target-fill-ip");
   const sessionInput = element<HTMLInputElement>("target-session");
   const submit = element<HTMLButtonElement>("target-submit");
   const cancel = element<HTMLButtonElement>("target-cancel");
@@ -47,7 +49,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   const confirmPassword = element<HTMLInputElement>("confirm-new-password");
   const passwordSubmit = element<HTMLButtonElement>("password-submit");
   const passwordCancel = element<HTMLButtonElement>("password-cancel");
-  let state: TargetsResponse = { mode: "shell", active: LOCAL_ID, targets: [] };
+  let state: TargetsResponse = { mode: "shell", clientIp: null, active: LOCAL_ID, targets: [] };
   let editing: string | null = null;
   let busy = false;
   let statusText = () => "";
@@ -134,6 +136,19 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
     closePassword();
     resetForm();
   };
+  const clientIp = () => (state.clientIp ?? "").trim();
+  const syncFillIp = () => {
+    const ip = clientIp();
+    fillIp.hidden = !ip;
+    fillIp.title = ip ? t("fillClientIpTitle", { ip }) : "";
+  };
+  fillIp.addEventListener("click", () => {
+    const ip = clientIp();
+    if (!ip) return;
+    remoteInput.value = fillRemoteHost(remoteInput.value, ip);
+    remoteInput.focus();
+    remoteInput.setSelectionRange(remoteInput.value.length, remoteInput.value.length);
+  });
   const openForm = (target?: HerdrTarget) => {
     closePassword();
     resetForm();
@@ -145,6 +160,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
     }
     submit.textContent = t(editing ? "save" : "add");
     form.hidden = false;
+    syncFillIp();
     add.setAttribute("aria-expanded", "true");
     nameInput.focus();
   };
@@ -230,9 +246,11 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   const refresh = async () => {
     state = await request("/api/herdr/targets", "GET") as TargetsResponse;
     render();
+    syncFillIp();
   };
   onLanguageChange(() => {
     render();
+    syncFillIp();
     submit.textContent = t(editing ? "save" : "add");
     status.textContent = statusText();
     version.textContent = versionText();

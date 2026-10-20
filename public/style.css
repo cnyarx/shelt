@@ -72,6 +72,10 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 .settings-disclosure[aria-expanded="true"] .disclosure-chevron { transform: rotate(180deg); }
 .settings-form-actions { display: flex; gap: 6px; }
 .settings-form-actions > button:first-child { flex: 1; }
+.settings-input-row { display: flex; gap: 6px; }
+.settings-input-row > input { flex: 1; }
+#settings-panel .settings-input-row > .target-ip-button { flex: none; padding: 0 10px; border: 1px solid #30363d; border-radius: 8px; background: transparent; color: #8b949e; font: inherit; font-weight: 400; white-space: nowrap; cursor: pointer; }
+#settings-panel .settings-input-row > .target-ip-button:hover { color: #fff; border-color: #4b5563; }
 #settings-hint { margin: 6px 0 4px; color: #8b949e; font-size: 12px; }
 #settings-panel section:not([hidden]) ~ section:not([hidden]) { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / 8%); }
 #settings-panel button:focus-visible, .language-select:focus-visible { outline: 2px solid #31bafd; outline-offset: 2px; }

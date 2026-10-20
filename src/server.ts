@@ -319,6 +319,13 @@ async function staticFile(pathname: string): Promise<Response> {
   }
 }
 
+function normalizeClientIp(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const zone = address.indexOf("%");
+  const value = zone >= 0 ? address.slice(0, zone) : address;
+  return value.startsWith("::ffff:") ? value.slice(7) : value;
+}
+
 const server = Bun.serve<SessionData>({
   hostname: host,
   port,
@@ -417,7 +424,8 @@ const server = Bun.serve<SessionData>({
 
     if (url.pathname === "/api/herdr/targets" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);
-      return json({ mode: launch.mode, ...targets.list() }, 200, { "Cache-Control": "no-store" });
+      const clientIp = normalizeClientIp(server.requestIP(req)?.address);
+      return json({ mode: launch.mode, clientIp, ...targets.list() }, 200, { "Cache-Control": "no-store" });
     }
 
     if (url.pathname === "/api/herdr/agent-events" && req.method === "GET") {

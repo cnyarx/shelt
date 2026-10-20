@@ -76,7 +76,10 @@
         <ul id="target-list"></ul>
         <form id="target-form" hidden>
           <input id="target-name" type="text" placeholder="名称" data-i18n-placeholder="name" aria-label="名称" data-i18n-aria-label="name" maxlength="40" required />
-          <input id="target-remote" type="text" placeholder="SSH 目标（user@host）" data-i18n-placeholder="remote" aria-label="SSH 目标（user@host）" data-i18n-aria-label="remote" required />
+          <div class="settings-input-row">
+            <input id="target-remote" type="text" placeholder="SSH 目标（user@host）" data-i18n-placeholder="remote" aria-label="SSH 目标（user@host）" data-i18n-aria-label="remote" required />
+            <button id="target-fill-ip" type="button" class="target-ip-button" hidden data-i18n="fillClientIp">填入当前 IP</button>
+          </div>
           <input id="target-session" type="text" placeholder="会话名（可选）" data-i18n-placeholder="session" aria-label="会话名（可选）" data-i18n-aria-label="session" />
           <div class="settings-form-actions"><button id="target-submit" type="submit">添加</button><button id="target-cancel" type="button" class="ghost" data-i18n="cancel">取消</button></div>
         </form>
