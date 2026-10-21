@@ -21,11 +21,7 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 .terminal-tts-actions select { max-width: 190px; }
 #terminal-tts-toolbar button:focus-visible, #terminal-tts-toolbar select:focus-visible { outline: 2px solid #31bafd; outline-offset: 2px; }
 #terminal-tts-status { margin: 0; color: #9ed9f5; overflow-wrap: anywhere; }
-.terminal-tts-note { color: #8b949e; font-size: 11px; margin: 7px 0; overflow-wrap: anywhere; }
-#terminal-tts-controls { max-height: calc(100dvh - 70px); overflow-y: auto; }
-.terminal-tts-source-row select { flex: 1; min-width: 0; max-width: 100%; }
-#terminal-tts-replies { max-height: 32dvh; overflow-y: auto; margin: 6px 0 12px; padding-left: 22px; }
-#terminal-tts-replies button { width: 100%; padding: 8px; margin-bottom: 4px; border: 1px solid #30363d; border-radius: 6px; background: #171e25; color: inherit; text-align: left; font: inherit; overflow-wrap: anywhere; cursor: pointer; }
+.terminal-tts-note { color: #8b949e; font-size: 11px; margin: 7px 0 0; }
 .terminal-speech-highlight { position: absolute; pointer-events: none; background: #31bafd20; outline: 1px solid #31bafd80; z-index: 12; }
 #terminal.terminal-speech-targeting, #terminal.terminal-speech-targeting .xterm-screen { cursor: crosshair !important; }
 @media (max-width: 500px) { #terminal-tts-controls { margin-right: -38px; } }

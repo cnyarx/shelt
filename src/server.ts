@@ -20,7 +20,6 @@ import {
 } from "./launch.ts";
 import { previewRoots, previewType, wikiLinkCandidates, withinPreviewRoot } from "./preview-security.ts";
 import { HerdrEvents, type HerdrEventMessage } from "./herdr-events.ts";
-import { QwenSources, remoteSpeech, validSpeechRequest } from "./qwen-sources.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -69,7 +68,6 @@ if (typeof process.getuid === "function") {
 }
 const launch = resolveLaunch({ env: process.env, which: Bun.which, passwdShell });
 const herdrEvents = new HerdrEvents(launch, process.env);
-const speechSources = new QwenSources();
 
 await mkdir(uploadDir, { recursive: true, mode: 0o700 });
 await chmod(uploadDir, 0o700);
@@ -356,28 +354,6 @@ const server = Bun.serve<SessionData>({
         "Content-Type": result.contentType, "Cache-Control": "no-store", "Content-Disposition": "inline",
         "Content-Security-Policy": INTERACTIVE_CSP, "Access-Control-Allow-Origin": "*",
       });
-    }
-
-    if (url.pathname === "/api/speech/sources" && req.method === "GET") {
-      if (req.headers.has("origin") && !allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
-      if (!authenticated(req)) return response("Authentication required", 401);
-      const targetId = url.searchParams.get("target") || targets.active();
-      try {
-        if (targetId === LOCAL_TARGET_ID) return json({ targetId, sources: await speechSources.discover() }, 200, { "Cache-Control": "no-store" });
-        const target = targets.list().targets.find((target) => target.id === targetId);
-        return target ? json(await remoteSpeech(target, "list"), 200, { "Cache-Control": "no-store" }) : response("Unknown Herdr target", 404);
-      } catch (error) { return response(error instanceof Error ? error.message : "Speech source unavailable", 503); }
-    }
-    if (url.pathname === "/api/speech/read" && req.method === "POST") {
-      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
-      if (!authenticated(req)) return response("Authentication required", 401);
-      const request = await jsonBody(req);
-      if (!validSpeechRequest(request)) return response("Invalid speech request", 400);
-      try {
-        if (!request.targetId || request.targetId === LOCAL_TARGET_ID) return json(await speechSources.read(request), 200, { "Cache-Control": "no-store" });
-        const target = targets.list().targets.find((target) => target.id === request.targetId);
-        return target ? json(await remoteSpeech(target, "read", request), 200, { "Cache-Control": "no-store" }) : response("Unknown Herdr target", 404);
-      } catch (error) { return response(error instanceof Error ? error.message : "Speech read unavailable", 503); }
     }
 
     if (url.pathname === "/api/auth/status" && req.method === "GET") {

@@ -2,7 +2,6 @@ mod auth;
 mod edge_tts;
 mod herdr_events;
 mod interactive_preview;
-mod qwen_speech;
 mod share_routes;
 mod shares;
 mod targets;
@@ -93,7 +92,6 @@ struct AppState {
     targets: targets::TargetStore,
     interactive_previews: interactive_preview::InteractivePreviews,
     herdr_events: herdr_events::HerdrEvents,
-    speech_sources: qwen_speech::SpeechSources,
     updater: updater::Updater,
     failed_logins: Arc<Mutex<u32>>,
 }
@@ -235,11 +233,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "logs" => println!("{}", log_file().display()),
         "version" | "--version" => print!("{}", std::str::from_utf8(BUILD_VERSION)?),
         "foreground" => foreground().await?,
-        "speech-source" => qwen_speech::cli().await?,
-        "qwen" => qwen_speech::launch_qwen()?,
         _ => {
             return Err(
-                "usage: shelt [start|stop|restart|status|url|logs|version|foreground|qwen|speech-source]".into(),
+                "usage: shelt [start|stop|restart|status|url|logs|version|foreground]".into(),
             )
         }
     }
@@ -420,7 +416,6 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
         interactive_previews: interactive_preview::InteractivePreviews::default(),
         herdr_events: herdr_events::HerdrEvents::new(herdr_socket_path),
-        speech_sources: qwen_speech::SpeechSources::default(),
         updater: updater::Updater::new()?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
@@ -487,11 +482,6 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/api/tts",
             post(tts_handler).layer(DefaultBodyLimit::max(MAX_TTS_BODY_BYTES)),
-        )
-        .route("/api/speech/sources", get(qwen_speech::sources))
-        .route(
-            "/api/speech/read",
-            post(qwen_speech::read).layer(DefaultBodyLimit::max(32 * 1024)),
         )
         .route(
             "/api/resolve-terminal-path",
@@ -1891,7 +1881,6 @@ mod tests {
             .unwrap(),
             interactive_previews: interactive_preview::InteractivePreviews::default(),
             herdr_events: herdr_events::HerdrEvents::new(PathBuf::from("/nonexistent")),
-            speech_sources: qwen_speech::SpeechSources::default(),
             updater: updater::Updater::new().unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),
         };

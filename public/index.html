@@ -34,11 +34,6 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>
       </button>
       <div id="terminal-tts-controls">
-        <div class="terminal-tts-actions terminal-tts-source-row">
-          <select id="terminal-tts-source" aria-label="朗读会话" data-i18n-aria-label="terminalSpeechSession"></select>
-          <button id="terminal-tts-refresh" type="button">刷新会话</button>
-        </div>
-        <p id="terminal-tts-source-status" class="terminal-tts-note"></p>
         <div class="terminal-tts-actions">
           <button id="terminal-tts-target" type="button" aria-pressed="false">定位朗读</button>
           <button id="terminal-tts-auto" type="button" aria-pressed="false">新回复自动读</button>
@@ -56,13 +51,8 @@
             <option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option>
           </select></label>
         </div>
-        <div class="terminal-tts-actions">
-          <button id="terminal-tts-replies-toggle" type="button">回复列表</button>
-          <button id="terminal-tts-older" type="button" hidden>更早的回复</button>
-        </div>
-        <ol id="terminal-tts-replies" aria-label="回复列表" data-i18n-aria-label="terminalSpeechReplies" hidden></ol>
         <p id="terminal-tts-status" role="status" aria-live="polite"></p>
-        <p class="terminal-tts-note" data-i18n="terminalSpeechNote">朗读绑定所选会话，打字、滚动和缩放不会中断。只读取该会话的正文；开启朗读后才发送到在线语音服务。不会重启 agent。</p>
+        <p class="terminal-tts-note" data-i18n="terminalSpeechNote">仅识别 Qwen 的 ◆︎ 正文。滚动、缩放或切换 agent 时可能暂停；不会读取会话日志。朗读文本会发送到现有在线语音服务。</p>
       </div>
     </aside>
     <span id="sheltie-peek" aria-hidden="true">
