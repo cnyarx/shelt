@@ -48,7 +48,7 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
       expect((await api("/api/herdr/active", "POST", { id: "local" }, "https://evil.example")).status).toBe(403);
 
       const initial = await (await api("/api/herdr/targets")).json();
-      expect(initial).toEqual({ mode: "shell", clientIp: "127.0.0.1", active: "local", targets: [] });
+      expect(initial).toEqual({ mode: "shell", active: "local", targets: [] });
 
       for (const remote of ["-oProxyCommand=evil", "host; rm -rf /", "host$(whoami)", "host`id`", "host name"]) {
         expect((await api("/api/herdr/targets", "POST", { name: "bad", remote })).status).toBe(400);
