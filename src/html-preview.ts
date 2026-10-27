@@ -2,7 +2,8 @@ import { HTML_INTERACTIVE_KEY, htmlInteractiveEnabled } from "./preview-preferen
 import type { PreviewTtsController } from "./tts.ts";
 import { onLanguageChange, t, type MessageKey } from "./i18n.ts";
 
-export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl: string, tts: PreviewTtsController | null): Promise<void> {
+export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl: string, tts: PreviewTtsController | null, onDocument?: (root: Document | null, switchToStatic?: () => Promise<void>) => void): Promise<void> {
+  let staticOverride = false;
   let generation = 0;
   let grant: string | null = null;
   let errorKey: MessageKey | null = null;
@@ -16,8 +17,9 @@ export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl:
     errorKey = null;
     mount.replaceChildren();
     tts?.setDocument(null, undefined, "loadingPreview");
+    onDocument?.(null);
     if (previous) await revoke(previous);
-    const interactive = htmlInteractiveEnabled();
+    const interactive = !staticOverride && htmlInteractiveEnabled();
     let url = apiUrl;
     if (interactive) {
       const response = await fetch("/api/preview-session", {
@@ -39,11 +41,12 @@ export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl:
     frame.title = path.split("/").pop() || t("htmlPreview");
     if (interactive) {
       tts?.setDocument(null, undefined, "interactiveSpeechUnavailable");
+      onDocument?.(null, async () => { staticOverride = true; await render(); });
     } else {
       frame.addEventListener("load", () => {
         if (current !== generation) return;
-        try { tts?.setDocument(frame.contentDocument, frame); }
-        catch { tts?.setDocument(null, undefined, "noReadable"); }
+        try { tts?.setDocument(frame.contentDocument, frame); onDocument?.(frame.contentDocument); }
+        catch { tts?.setDocument(null, undefined, "noReadable"); onDocument?.(null); }
       });
     }
     frame.src = url;

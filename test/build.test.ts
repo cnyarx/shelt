@@ -78,15 +78,22 @@ describe("production bundle", () => {
     expect(html).toContain('aria-label="文档目录"');
     expect(html).toContain('aria-label="文档目录树"');
     expect(html).toContain('src="/preview.js"');
-    expect(styles).toContain(".tts-toolbar { position: fixed;");
-    expect(styles).toContain(".tts-toolbar.collapsed { padding: 0;");
+    expect(styles).toContain(".preview-tools { position: fixed;");
+    expect(styles).toContain(".preview-tools .preview-tool { display: grid;");
+    expect(styles).toContain("width: 40px; height: 40px;");
     expect(styles).toContain(".tts-toolbar.collapsed .tts-controls { display: none;");
-    expect(styles).toContain(".tts-toolbar .tts-toggle { display: grid;");
-    expect(styles).toContain("backdrop-filter: blur(18px) saturate(150%);");
+    expect(styles).toContain("backdrop-filter: blur(16px);");
+    for (const id of ["share-toggle", "tts-toggle", "toc-toggle", "edit-toggle"]) {
+      const button = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>([\\s\\S]*?)</button>`));
+      expect(button?.[0]).toContain("preview-tool");
+      expect(button?.[1]).toContain("<svg");
+      expect(button?.[0]).toContain("aria-label=");
+      expect(button?.[0]).toContain("title=");
+      expect(button?.[1]?.replace(/<svg[\s\S]*<\/svg>/, "").trim()).toBe("");
+    }
     expect(styles).not.toContain(".tts-play-here");
     expect(styles).toContain(".tts-speaking {");
-    expect(styles).toContain(".toc-panel {");
-    expect(styles).toContain(".toc-toggle {");
+    expect(styles).toContain(".toc-panel.collapsed .toc-list { display: none;");
     expect(styles).toContain(".toc-list {");
     expect(styles).toContain(".toc-tree {");
     expect(styles).toContain(".toc-link {");

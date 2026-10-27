@@ -13,10 +13,6 @@ export function setupShare(path: string): void {
   let expiry: number | null = null;
   let feedback: (() => string) | null = () => t("loadingShare");
   toolbar.hidden = false;
-  const ttsToolbar = document.getElementById("tts-toolbar")!;
-  new ResizeObserver(() => {
-    toolbar.style.top = ttsToolbar.classList.contains("collapsed") ? "" : `${ttsToolbar.getBoundingClientRect().bottom + 8}px`;
-  }).observe(ttsToolbar);
   let busy = false;
   const setBusy = (value: boolean) => {
     busy = value;

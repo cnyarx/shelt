@@ -46,6 +46,7 @@ test("read-aloud language updates without resetting playback, highlighting or vo
   const context: any = {
     localStorage: { getItem: () => null, setItem() {} },
     document: { getElementById: (id: string) => elements.get(id), addEventListener() {} },
+    window: { addEventListener() {}, dispatchEvent() {} },
   };
   runInNewContext(`${source}\nglobalThis.reader = new PreviewTtsController();`, context);
   const reader = context.reader;

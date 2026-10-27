@@ -21,6 +21,7 @@ import { installSheltiePeek } from "./sheltie-peek.ts";
 import { TerminalOutputPump } from "./terminal-output.ts";
 import { TerminalTtsController } from "./terminal-tts.ts";
 import { setupUpdates } from "./update-ui.ts";
+import { terminalPreviewUrl } from "./preview-source.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -214,6 +215,7 @@ async function uploadImage(file: File) {
 }
 
 function openLink(url: string) {
+  url = terminalPreviewUrl(url, location.origin) ?? url;
   window.open(url, "_blank", "noopener,noreferrer");
 }
 

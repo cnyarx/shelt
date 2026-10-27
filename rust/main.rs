@@ -2,6 +2,7 @@ mod auth;
 mod edge_tts;
 mod herdr_events;
 mod interactive_preview;
+mod preview_edits;
 mod share_routes;
 mod shares;
 mod targets;
@@ -92,6 +93,7 @@ struct AppState {
     targets: targets::TargetStore,
     interactive_previews: interactive_preview::InteractivePreviews,
     herdr_events: herdr_events::HerdrEvents,
+    preview_edits: preview_edits::EditService,
     updater: updater::Updater,
     failed_logins: Arc<Mutex<u32>>,
 }
@@ -416,6 +418,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
         interactive_previews: interactive_preview::InteractivePreviews::default(),
         herdr_events: herdr_events::HerdrEvents::new(herdr_socket_path),
+        preview_edits: preview_edits::EditService::new(state_dir().join("preview-edit-receipts")),
         updater: updater::Updater::new()?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
@@ -460,6 +463,15 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             post(upload_handler).layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES)),
         )
         .route("/api/preview", get(preview_handler))
+        .route("/api/preview-edits/open", get(preview_edits::open_handler))
+        .route(
+            "/api/preview-edits/agents",
+            get(preview_edits::list_handler),
+        )
+        .route(
+            "/api/preview-edits/send",
+            post(preview_edits::send_handler).layer(DefaultBodyLimit::max(preview_edits::MAX_BODY)),
+        )
         .route(
             "/api/preview-session",
             post(interactive_preview::create).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
@@ -1881,6 +1893,9 @@ mod tests {
             .unwrap(),
             interactive_previews: interactive_preview::InteractivePreviews::default(),
             herdr_events: herdr_events::HerdrEvents::new(PathBuf::from("/nonexistent")),
+            preview_edits: preview_edits::EditService::new(
+                env::temp_dir().join("shelt-edit-origin-test"),
+            ),
             updater: updater::Updater::new().unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),
         };

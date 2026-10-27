@@ -10,8 +10,11 @@
     <link rel="stylesheet" href="/preview.css" />
   </head>
   <body>
+    <div id="preview-tools" class="preview-tools" role="group" aria-label="预览工具" data-i18n-aria-label="preview">
     <aside id="share-toolbar" class="share-toolbar" aria-label="文档分享" data-i18n-aria-label="sharedDocument" hidden>
-      <button id="share-toggle" type="button" aria-expanded="false" aria-controls="share-panel" data-i18n="share">分享</button>
+      <button id="share-toggle" class="preview-tool" type="button" aria-expanded="false" aria-controls="share-panel" aria-label="分享" title="分享" data-i18n-title="share" data-i18n-aria-label="share">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
+      </button>
       <section id="share-panel" hidden>
         <strong data-i18n="readOnlyShare">只读分享</strong>
         <p id="share-status" role="status" aria-live="polite">正在查询分享状态…</p>
@@ -21,8 +24,8 @@
       </section>
     </aside>
     <aside id="tts-toolbar" class="tts-toolbar collapsed" aria-label="语音朗读工具栏" data-i18n-aria-label="speechToolbar">
-      <button id="tts-toggle" class="tts-toggle" type="button" aria-expanded="false" aria-controls="tts-controls" aria-label="展开语音朗读工具栏">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>
+      <button id="tts-toggle" class="tts-toggle preview-tool" type="button" aria-expanded="false" aria-controls="tts-controls" aria-label="展开语音朗读工具栏" title="展开语音朗读工具栏">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z M17 8a6 6 0 0 1 0 8 M20 5a10 10 0 0 1 0 14"/></svg>
       </button>
       <div id="tts-controls" class="tts-controls">
         <button id="tts-start" type="button" data-i18n="readStart" disabled>从头朗读</button>
@@ -49,11 +52,35 @@
       </div>
     </aside>
     <nav id="toc-panel" class="toc-panel" aria-label="文档目录" data-i18n-aria-label="toc" hidden>
-      <button id="toc-toggle" class="toc-toggle" type="button" aria-expanded="true" aria-controls="toc-list" aria-label="切换目录导航" data-i18n-aria-label="toggleToc">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h14v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+      <button id="toc-toggle" class="toc-toggle preview-tool" type="button" aria-expanded="false" aria-controls="toc-list" aria-label="文档目录" title="文档目录" data-i18n-title="toc" data-i18n-aria-label="toc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
       </button>
       <div id="toc-list" class="toc-list" role="region" aria-label="文档目录树" data-i18n-aria-label="tocTree"></div>
     </nav>
+    <button id="edit-toggle" class="edit-toggle preview-tool" type="button" aria-pressed="false" aria-controls="edit-panel" aria-label="提修改" title="提修改" data-i18n-title="editRequests" data-i18n-aria-label="editRequests" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 4 4 4M4 20l4-1 12-12a2.8 2.8 0 0 0-4-4L4 15l-1 6 5-2M13 20h8"/></svg>
+    </button>
+    </div>
+    <aside id="edit-panel" class="edit-panel" aria-label="修改建议" data-i18n-aria-label="editRequests" hidden>
+      <header><strong data-i18n="editRequests">提修改</strong><button id="edit-close" type="button" data-i18n="editClose">退出标注</button></header>
+      <p id="edit-hint" data-i18n="editHint">点击段落或拖选文字，填写要求；Shelt 只整理提示词。</p>
+      <button id="edit-static" type="button" data-i18n="editStatic" hidden>切换到静态预览后标注</button>
+      <form id="edit-form" hidden>
+        <div id="edit-location" class="edit-location"></div>
+        <blockquote id="edit-original"></blockquote>
+        <label><span data-i18n="editInstruction">修改要求</span><textarea id="edit-instruction" rows="3" maxlength="4000" required></textarea></label>
+        <label class="edit-replacement-toggle"><input id="edit-use-replacement" type="checkbox"><span data-i18n="editUseReplacement">填写替换内容（可选）</span></label>
+        <textarea id="edit-replacement" rows="3" maxlength="12000" aria-label="替换内容" data-i18n-aria-label="editReplacement" hidden></textarea>
+        <div class="edit-actions"><button id="edit-save" type="submit" data-i18n="editAdd">加入修改清单</button><button id="edit-cancel" type="button" data-i18n="cancel">取消</button></div>
+      </form>
+      <h3 id="edit-count"></h3>
+      <ol id="edit-list"></ol>
+      <label><span data-i18n="editAgent">交给哪个 agent</span><select id="edit-agent"><option value="" data-i18n="editChooseAgent">请选择 agent</option></select></label>
+      <button id="edit-refresh-agents" type="button" data-i18n="editRefreshAgents">刷新 agent 列表</button>
+      <label><span data-i18n="editPrompt">将发送的提示词</span><textarea id="edit-prompt" rows="7" readonly></textarea></label>
+      <div class="edit-actions"><button id="edit-copy" type="button" data-i18n="editCopy" disabled>复制提示词</button><button id="edit-send" type="button" data-i18n="editSend" disabled>发送给该 agent 执行</button></div>
+      <p id="edit-status" role="status" aria-live="polite"></p>
+    </aside>
     <main id="preview" aria-live="polite">Loading preview…</main>
     <script type="module" src="/preview.js"></script>
   </body>

@@ -20,6 +20,8 @@ import {
 } from "./launch.ts";
 import { previewRoots, previewType, wikiLinkCandidates, withinPreviewRoot } from "./preview-security.ts";
 import { HerdrEvents, type HerdrEventMessage } from "./herdr-events.ts";
+import { MAX_EDIT_BODY, PreviewEditService } from "./preview-edit-service.ts";
+import { validateEditDocument, type EditSubmission } from "./preview-edits.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -68,6 +70,7 @@ if (typeof process.getuid === "function") {
 }
 const launch = resolveLaunch({ env: process.env, which: Bun.which, passwdShell });
 const herdrEvents = new HerdrEvents(launch, process.env);
+const previewEdits = new PreviewEditService(launch, join(stateDir, "preview-edit-receipts"));
 
 await mkdir(uploadDir, { recursive: true, mode: 0o700 });
 await chmod(uploadDir, 0o700);
@@ -413,6 +416,59 @@ const server = Bun.serve<SessionData>({
       failedLogins = 0;
       await auth.changePassword(body.newPassword as string, req.headers.get("cookie"));
       return json({ ok: true });
+    }
+
+    if (url.pathname.startsWith("/api/preview-edits/")) {
+      if (!authenticated(req)) return json({ error: "authentication_required" }, 401);
+      if (req.method === "POST" && !allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return json({ error: "forbidden" }, 403);
+      if (url.pathname === "/api/preview-edits/open" && req.method === "GET") {
+        const targetState = targets.list();
+        const target = targetState.targets.find(t => t.id === targetState.active) || null;
+        const source = await previewEdits.source(target);
+        const path = url.searchParams.get("path");
+        try {
+          if (!path || path.includes("\0")) return response("Invalid preview target", 400);
+          if (!isAbsolute(path) && !source.cwd) return response("Unable to query the focused Herdr pane", 503);
+          const canonical = await realpath(isAbsolute(path) ? path : join(source.cwd!, path));
+          if (!withinPreviewRoot(canonical, canonicalPreviewRoots)) return response("Path is outside preview roots", 403);
+          if (!previewType(canonical) || !(await stat(canonical)).isFile()) return response("Invalid preview target", 415);
+          const query = new URLSearchParams({ path: canonical });
+          if (source.agent) query.set("source", JSON.stringify({ targetId: source.agent.targetId, paneId: source.agent.paneId, session: source.agent.session }));
+          return response(null, 302, { Location: `/preview?${query}`, "Cache-Control": "no-store" });
+        } catch { return response("Not found", 404); }
+      }
+      let body: unknown;
+      if (url.pathname === "/api/preview-edits/send" && req.method === "POST") {
+        try {
+          if (Number(req.headers.get("content-length")) > MAX_EDIT_BODY || !req.body) return json({ error: "invalid_request" }, 400);
+          const reader = req.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
+          for (;;) { const next = await reader.read(); if (next.done) break; size += next.value.length; if (size > MAX_EDIT_BODY) { await reader.cancel(); return json({ error: "invalid_request" }, 400); } chunks.push(next.value); }
+          body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        } catch { return json({ error: "invalid_request" }, 400); }
+        if (!validateEditDocument(body)) return json({ error: "invalid_request" }, 400);
+      }
+      const path = req.method === "GET" ? url.searchParams.get("path") : (body as EditSubmission | undefined)?.path;
+      let canonical: string;
+      try {
+        if (!path || !isAbsolute(path)) return json({ error: "invalid_path" }, 400);
+        canonical = await realpath(path);
+        const type = previewType(canonical);
+        if (!withinPreviewRoot(canonical, canonicalPreviewRoots) || withinPreviewRoot(canonical, [stateDir])) return json({ error: "forbidden_path" }, 403);
+        if (!["markdown", "html"].includes(type?.kind || "") || !(await stat(canonical)).isFile()) return json({ error: "invalid_path" }, 400);
+        if (body && type?.kind !== (body as EditSubmission).kind) return json({ error: "invalid_path" }, 400);
+      } catch { return json({ error: "invalid_path" }, 404); }
+      if (url.pathname === "/api/preview-edits/agents" && req.method === "GET") return json({ agents: await previewEdits.list(targets.list().targets) }, 200, { "Cache-Control": "no-store" });
+      if (url.pathname === "/api/preview-edits/send" && req.method === "POST") {
+        const submission = body as EditSubmission;
+        if (!/^[a-f0-9]{32}$/.test(submission.requestId) || typeof submission.paneId !== "string" || !/^[A-Za-z0-9:._-]{1,128}$/.test(submission.paneId) || !/^[a-f0-9]{64}$/.test(submission.session) || typeof submission.targetId !== "string") return json({ error: "invalid_request" }, 400);
+        const target = targets.list().targets.find(t => t.id === submission.targetId);
+        if (submission.targetId !== "local" && !target) return json({ error: "unavailable" }, 404);
+        try {
+          const result = await previewEdits.send(submission, target || null);
+          return json(result, result.error ? 409 : 200, { "Cache-Control": "no-store" });
+        } catch { return json({ error: "delivery_unavailable" }, 503); }
+      }
+      return json({ error: "not_found" }, 404);
     }
 
     if (url.pathname === "/api/herdr/targets" && req.method === "GET") {

@@ -3,6 +3,9 @@ import { renderMarkdown } from "./markdown.ts";
 import { PreviewTtsController } from "./tts.ts";
 import { setupShare } from "./share-ui.ts";
 import { mountHtmlPreview } from "./html-preview.ts";
+import { PreviewEditController } from "./preview-edit-ui.ts";
+import { sourceFromUrl } from "./preview-source.ts";
+import { setupPreviewTools } from "./preview-tools.ts";
 import { localizedError, onLanguageChange, setupLanguage, t } from "./i18n.ts";
 
 function requiredElement(id: string): HTMLElement {
@@ -12,6 +15,8 @@ function requiredElement(id: string): HTMLElement {
 }
 
 setupLanguage();
+setupPreviewTools();
+const source = sourceFromUrl(new URL(location.href));
 const mount = requiredElement("preview");
 let message: (() => string) | null = () => t("loadingPreview");
 mount.textContent = message();
@@ -44,7 +49,7 @@ async function load(path: string): Promise<void> {
   if (!shareKey) setupShare(path);
   const kind = response.headers.get("x-shelt-preview-kind");
   if (kind === "markdown") {
-    const rendered = renderMarkdown(await response.text(), path);
+    const rendered = renderMarkdown(await response.text(), path, { sourceLines: !shareKey });
     mount.className = "markdown-body";
     mount.innerHTML = rendered.html;
     setupTableOfContents();
@@ -73,6 +78,7 @@ async function load(path: string): Promise<void> {
       }
     }));
     tts?.setDocument(mount);
+    if (!shareKey) new PreviewEditController(path, "markdown", source).setDocument(mount);
     return;
   }
   if (kind === "image") {
@@ -87,7 +93,8 @@ async function load(path: string): Promise<void> {
   if (kind === "html" || kind === "svg") {
     mount.className = "native-preview";
     if (kind === "html" && !shareKey) {
-      await mountHtmlPreview(mount, path, apiUrl, tts);
+      const edits = new PreviewEditController(path, "html", source);
+      await mountHtmlPreview(mount, path, apiUrl, tts, (root, switchToStatic) => edits.setDocument(root, switchToStatic));
       return;
     }
     const frame = document.createElement("iframe");
@@ -168,6 +175,8 @@ function setupTableOfContents(): void {
   }
   list.replaceChildren(tree);
   panel.hidden = false;
+  panel.classList.add("collapsed");
+  toggle.setAttribute("aria-expanded", "false");
   function revealActiveLink(): void {
     if (panel.classList.contains("collapsed")) return;
     const link = links.find((link) => link.classList.contains("toc-active"));
@@ -191,13 +200,6 @@ function setupTableOfContents(): void {
       toggle.focus();
     }
   });
-  const toolbar = requiredElement("tts-toolbar");
-  const placePanel = () => {
-    const sharing = requiredElement("share-toolbar");
-    panel.style.top = `${Math.max(toolbar.hidden ? 0 : toolbar.getBoundingClientRect().bottom, sharing.hidden ? 0 : sharing.getBoundingClientRect().bottom) + 8}px`;
-  };
-  new ResizeObserver(placePanel).observe(toolbar);
-  placePanel();
   let scheduled = false;
   const updateActive = () => {
     scheduled = false;

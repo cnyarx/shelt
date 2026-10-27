@@ -5,17 +5,25 @@ export const MAX_MERMAID_SOURCE_BYTES = 64 * 1024;
 
 export type RenderedMarkdown = { html: string; mermaid: Array<{ id: string; source: string }> };
 
-export function renderMarkdown(source: string, documentPath: string): RenderedMarkdown {
+type SourceOptions = { sourceLines?: boolean; lineOffset?: number };
+
+function sourceRange(options: SourceOptions, start: number, end: number): string {
+  const offset = options.lineOffset ?? 0;
+  return options.sourceLines ? ` data-source-start="${start + offset + 1}" data-source-end="${end + offset + 1}"` : "";
+}
+
+export function renderMarkdown(source: string, documentPath: string, options: SourceOptions = {}): RenderedMarkdown {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const output: string[] = [];
   const mermaid: Array<{ id: string; source: string }> = [];
   const headingIds = new Map<string, number>();
   let paragraph: string[] = [];
+  let paragraphStart = 0;
   let index = 0;
 
   const closeParagraph = () => {
     if (!paragraph.length) return;
-    output.push(`<p>${renderInline(paragraph.join(" "), documentPath)}</p>`);
+    output.push(`<p${sourceRange(options, paragraphStart, paragraphStart + paragraph.length - 1)}>${renderInline(paragraph.join(" "), documentPath)}</p>`);
     paragraph = [];
   };
   const closeBlocks = () => {
@@ -23,6 +31,7 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
   };
 
   while (index < lines.length) {
+    const start = index;
     const line = lines[index]!;
     const fence = line.match(/^\s*```\s*([^\s`]*)\s*$/);
     if (fence) {
@@ -38,10 +47,10 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
       if (language === "mermaid" && mermaid.length < MAX_MERMAID_DIAGRAMS && new TextEncoder().encode(text).length <= MAX_MERMAID_SOURCE_BYTES) {
         const id = `mermaid-${mermaid.length + 1}`;
         mermaid.push({ id, source: text });
-        output.push(`<figure class="mermaid" data-mermaid-id="${id}"><pre><code>${escapeHtml(text)}</code></pre></figure>`);
+        output.push(`<figure class="mermaid" data-mermaid-id="${id}"${sourceRange(options, start, Math.min(index, lines.length - 1))}><pre><code>${escapeHtml(text)}</code></pre></figure>`);
       } else {
         const className = language ? ` class="language-${escapeAttribute(language)}"` : "";
-        output.push(`<pre><code${className}>${escapeHtml(text)}</code></pre>`);
+        output.push(`<pre${sourceRange(options, start, Math.min(index, lines.length - 1))}><code${className}>${escapeHtml(text)}</code></pre>`);
       }
       index += 1;
       continue;
@@ -63,7 +72,8 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
         if (index >= lines.length) break;
         current = lines[index]!;
       }
-      output.push(renderMath(math.join("\n").trim(), true));
+      const renderedMath = renderMath(math.join("\n").trim(), true);
+      output.push(options.sourceLines ? `<div${sourceRange(options, start, Math.min(index, lines.length - 1))}>${renderedMath}</div>` : renderedMath);
       index += 1;
       continue;
     }
@@ -77,7 +87,7 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
       const occurrence = (headingIds.get(baseId) ?? 0) + 1;
       headingIds.set(baseId, occurrence);
       const id = occurrence === 1 ? baseId : `${baseId}-${occurrence}`;
-      output.push(`<h${level} id="${escapeAttribute(id)}">${renderInline(headingText, documentPath)}</h${level}>`);
+      output.push(`<h${level} id="${escapeAttribute(id)}"${sourceRange(options, start, start)}>${renderInline(headingText, documentPath)}</h${level}>`);
       index += 1;
       continue;
     }
@@ -94,7 +104,7 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
         quote.push(lines[index]!.replace(/^>\s?/, ""));
         index += 1;
       }
-      output.push(`<blockquote>${renderMarkdown(quote.join("\n"), documentPath).html}</blockquote>`);
+      output.push(`<blockquote${sourceRange(options, start, index - 1)}>${renderMarkdown(quote.join("\n"), documentPath, { ...options, lineOffset: (options.lineOffset ?? 0) + start }).html}</blockquote>`);
       continue;
     }
     if (isTableHeader(lines, index)) {
@@ -106,7 +116,7 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
         rows.push(splitTableRow(lines[index]!));
         index += 1;
       }
-      output.push(`<div class="table-wrap"><table><thead><tr>${headers.map((cell) => `<th>${renderInline(cell, documentPath)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInline(cell, documentPath)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      output.push(`<div class="table-wrap"><table><thead><tr>${headers.map((cell) => `<th${sourceRange(options, start, start)}>${renderInline(cell, documentPath)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, i) => `<tr>${row.map((cell) => `<td${sourceRange(options, start + 2 + i, start + 2 + i)}>${renderInline(cell, documentPath)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
       continue;
     }
     const unordered = line.match(/^(\s*)[-+*]\s+(.+)$/);
@@ -116,7 +126,7 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
       const match = unordered ?? ordered!;
       const indent = match[1]!.length;
       const tag = unordered ? "ul" : "ol";
-      const result = parseList(lines, index, indent, tag, documentPath);
+      const result = parseList(lines, index, indent, tag, documentPath, options);
       output.push(result.html);
       index = result.nextIndex;
       continue;
@@ -126,6 +136,7 @@ export function renderMarkdown(source: string, documentPath: string): RenderedMa
       index += 1;
       continue;
     }
+    if (!paragraph.length) paragraphStart = index;
     paragraph.push(line.trim());
     index += 1;
   }
@@ -142,11 +153,13 @@ function parseList(
   indent: number,
   tag: ListTag,
   documentPath: string,
+  options: SourceOptions,
 ): { html: string; nextIndex: number } {
   const items: string[] = [];
   let index = startIndex;
 
   while (index < lines.length) {
+    const itemStart = index;
     const item = listLine(lines[index]!);
     if (!item || item.indent !== indent || item.tag !== tag) break;
     index += 1;
@@ -156,7 +169,7 @@ function parseList(
     while (index < lines.length) {
       const next = listLine(lines[index]!);
       if (next && next.indent > indent) {
-        const nested = parseList(lines, index, next.indent, next.tag, documentPath);
+        const nested = parseList(lines, index, next.indent, next.tag, documentPath, options);
         children.push(nested.html);
         index = nested.nextIndex;
         continue;
@@ -168,7 +181,7 @@ function parseList(
       index += 1;
     }
 
-    items.push(`<li>${renderInline(content.join(" "), documentPath)}${children.join("")}</li>`);
+    items.push(`<li${sourceRange(options, itemStart, index - 1)}>${renderInline(content.join(" "), documentPath)}${children.join("")}</li>`);
 
     let nextIndex = index;
     while (nextIndex < lines.length && !lines[nextIndex]!.trim()) nextIndex += 1;

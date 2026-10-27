@@ -94,12 +94,17 @@ export class PreviewTtsController {
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && this.targeting) this.setTargeting(false);
     });
+    window.addEventListener("shelt-selection-mode", event => {
+      if ((event as CustomEvent).detail === "edit") this.setTargeting(false);
+    });
     onLanguageChange(() => this.renderText());
     this.renderText();
   }
 
   private renderText(): void {
-    this.toggleButton.setAttribute("aria-label", t(this.toolbar.classList.contains("collapsed") ? "expandSpeech" : "collapseSpeech"));
+    const label = t(this.toolbar.classList.contains("collapsed") ? "expandSpeech" : "collapseSpeech");
+    this.toggleButton.setAttribute("aria-label", label);
+    this.toggleButton.setAttribute("title", label);
     this.targetButton.textContent = t(this.targeting ? "exitTargeting" : "targetRead");
     this.pauseButton.textContent = t(this.state === "paused" ? "resume" : "pause");
     this.status.textContent = t(this.statusKey);
@@ -131,10 +136,11 @@ export class PreviewTtsController {
   private installTargeting(root: ParentNode | null): void {
     this.targetingCleanup?.();
     if (!root) { this.targetingCleanup = undefined; return; }
-    const eventRoot = root instanceof Document ? root : document;
+    const eventRoot = root.nodeType === Node.DOCUMENT_NODE ? root : document;
     const handler = (event: Event) => {
       if (!this.targeting) return;
-      const eventElement = event.target instanceof Element ? event.target : null;
+      const targetNode = event.target as Node | null;
+      const eventElement = targetNode?.nodeType === Node.ELEMENT_NODE ? targetNode as Element : null;
       if (eventElement?.closest("#tts-toolbar")) return;
       const target = eventElement?.closest<HTMLElement>(READABLE_SELECTOR) ?? null;
       const block = target ? this.blocks.find((item) => item.element === target) : undefined;
@@ -149,6 +155,7 @@ export class PreviewTtsController {
 
   private setTargeting(enabled: boolean): void {
     this.targeting = enabled && this.blocks.length > 0;
+    if (this.targeting) window.dispatchEvent(new CustomEvent("shelt-selection-mode", { detail: "speech" }));
     this.targetButton.setAttribute("aria-pressed", String(this.targeting));
     this.targetButton.classList.toggle("active", this.targeting);
     this.setStatus(this.targeting ? "targetHint" : this.state === "idle" ? "ready" : this.statusKey);

@@ -15,6 +15,7 @@ function setup(preference: string | null = null) {
   const handlers = new Map<string, (event: any) => void>();
   const calls: { url: string; method: string }[] = [];
   const spoken: any[][] = [];
+  const documents: any[][] = [];
   let sequence = 0;
   let complete: (() => void) | undefined;
   let defer = false;
@@ -33,9 +34,9 @@ function setup(preference: string | null = null) {
   };
   runInNewContext(source, context);
   return {
-    mount, calls, spoken, storage,
+    mount, calls, spoken, storage, documents,
     language: (value: string) => context.setLanguage(value),
-    start: () => context.mountHtmlPreview(mount, "/page.html", "/api/preview?path=%2Fpage.html", context.tts),
+    start: () => context.mountHtmlPreview(mount, "/page.html", "/api/preview?path=%2Fpage.html", context.tts, (...args: any[]) => documents.push(args)),
     event: (name: string, event: unknown = {}) => handlers.get(name)?.(event),
     change: (value: string) => { storage.set("shelt-html-interactive", value); handlers.get("storage")?.({ key: "shelt-html-interactive" }); },
     defer: () => { defer = true; }, complete: () => complete!(),
@@ -77,6 +78,21 @@ test("HTML preview remembers static mode without creating a resource grant", asy
   await ui.start();
   expect(ui.calls).toEqual([]);
   expect(ui.mount.children[0].sandbox.value).toBe("allow-same-origin");
+});
+
+test("annotation switches only this preview to static without relaxing the sandbox", async () => {
+  const ui = setup();
+  await ui.start();
+  expect(ui.documents.at(-1)?.[0]).toBeNull();
+  const switchToStatic = ui.documents.at(-1)?.[1];
+  expect(typeof switchToStatic).toBe("function");
+  await switchToStatic();
+  const frame = ui.mount.children[0];
+  expect(frame.sandbox.value).toBe("allow-same-origin");
+  expect(ui.storage.has("shelt-html-interactive")).toBe(false);
+  expect(ui.calls).toContainEqual({ url: "/api/preview-session/1", method: "DELETE" });
+  frame.listeners.load();
+  expect(ui.documents.at(-1)?.[0]).toBe(frame.contentDocument);
 });
 
 test("a late interactive response cannot replace the newly selected static mode", async () => {
