@@ -22,6 +22,8 @@ import { previewRoots, previewType, wikiLinkCandidates, withinPreviewRoot } from
 import { HerdrEvents, type HerdrEventMessage } from "./herdr-events.ts";
 import { MAX_EDIT_BODY, PreviewEditService } from "./preview-edit-service.ts";
 import { validateEditDocument, type EditSubmission } from "./preview-edits.ts";
+import { TodoStore } from "./todo-store.ts";
+import { TodoHttp } from "./todo-http.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -71,6 +73,7 @@ if (typeof process.getuid === "function") {
 const launch = resolveLaunch({ env: process.env, which: Bun.which, passwdShell });
 const herdrEvents = new HerdrEvents(launch, process.env);
 const previewEdits = new PreviewEditService(launch, join(stateDir, "preview-edit-receipts"));
+const todoHttp = new TodoHttp(new TodoStore(join(stateDir, "todos.json")), new PreviewEditService(launch, join(stateDir, "todo-delivery-receipts")), targets, authenticated, publicHosts, allowedOrigins);
 
 await mkdir(uploadDir, { recursive: true, mode: 0o700 });
 await chmod(uploadDir, 0o700);
@@ -331,6 +334,8 @@ const server = Bun.serve<SessionData>({
     const requestHost = (req.headers.get("host") || "").toLowerCase();
     if (!allowedHost(requestHost, [...publicHosts])) return response("Forbidden host", 403);
     if ((url.pathname.startsWith("/api/") || url.pathname === "/ws") && !url.pathname.startsWith("/api/preview-content/") && (req.headers.get("origin") === "null" || req.headers.get("sec-fetch-site") === "cross-site")) return response("Cross-origin rejected", 403);
+
+    if (url.pathname === "/api/todos" || url.pathname.startsWith("/api/todos/")) return todoHttp.handle(req);
 
     if (url.pathname === "/api/preview-session" && req.method === "POST") {
       if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);

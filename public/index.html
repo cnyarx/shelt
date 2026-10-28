@@ -29,6 +29,37 @@
       </form>
     </main>
     <main id="terminal" aria-label="Shelt terminal" hidden></main>
+    <button id="todo-toggle" type="button" aria-expanded="false" aria-controls="todo-panel" aria-label="待办清单" data-i18n-aria-label="todoList" title="待办清单" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 12l2 2 3-4M11 12h10M3 18l2 2 3-4M11 18h10"/></svg><span id="todo-count">0</span>
+    </button>
+    <aside id="todo-panel" aria-label="待办清单" data-i18n-aria-label="todoList" hidden>
+      <header class="todo-heading"><h2 data-i18n="todoList">待办清单</h2><button id="todo-close" type="button" aria-label="收起" data-i18n-aria-label="todoClose">×</button></header>
+      <div class="todo-toolbar"><select id="todo-project" aria-label="项目" data-i18n-aria-label="todoProject"></select><button id="todo-new-project" type="button" data-i18n="todoNewProject">新建项目</button><button id="todo-edit-project-button" type="button" data-i18n="edit" disabled>编辑</button></div>
+      <div class="todo-toolbar"><button id="todo-new-task" type="button" data-i18n="todoNewTask" disabled>添加任务</button><button id="todo-new-folder" type="button" data-i18n="todoNewFolder" disabled>添加清单</button><label><input id="todo-hide-done" type="checkbox"><span data-i18n="todoHideDone">隐藏已完成</span></label></div>
+      <p id="todo-connection" role="status"></p>
+      <form id="todo-form" hidden>
+        <label><span data-i18n="todoTitle">标题</span><input id="todo-title" type="text" maxlength="160" required></label>
+        <label><span data-i18n="todoDescription">说明 / 进展依据</span><textarea id="todo-description" maxlength="8000" rows="3"></textarea></label>
+        <div id="todo-item-fields"><label><span data-i18n="todoProject">项目</span><select id="todo-edit-project"></select></label><label><span data-i18n="todoParent">父清单</span><select id="todo-parent"></select></label><label id="todo-state-label"><span data-i18n="todoState">状态</span><select id="todo-state"></select></label></div>
+        <label><span data-i18n="todoOrder">排序（小值靠前）</span><input id="todo-order" type="number" step="1" required></label>
+        <div class="todo-actions"><button id="todo-save" type="submit" data-i18n="save">保存</button><button id="todo-cancel" type="button" data-i18n="cancel">取消</button><button id="todo-delete" type="button" data-i18n="remove" hidden>删除</button></div>
+      </form>
+      <div id="todo-tree" aria-label="项目待办树" data-i18n-aria-label="todoTree"></div>
+      <button id="todo-prompt-toggle" type="button" data-i18n="todoUpdatePrompt">更新提示词</button>
+      <section id="todo-prompt-panel" hidden>
+        <p class="todo-note" data-i18n="todoPromptHint">生成临时授权提示词，交给 agent 根据实际进展更新。生成和复制均不会发送消息。</p>
+        <label><span data-i18n="todoAddress">Agent 可访问的 Shelt 地址</span><input id="todo-base-url" type="url" placeholder="https://host:port"></label>
+        <label class="todo-check"><input id="todo-all-scope" type="checkbox"><span data-i18n="todoAllScope">明确授权全清单（否则仅当前项目）</span></label>
+        <label><span data-i18n="todoValidity">有效期</span><select id="todo-ttl"><option value="3600" data-i18n="todoOneHour">1 小时</option><option value="28800" data-i18n="todoEightHours">8 小时</option><option value="86400" data-i18n="todoOneDay">24 小时</option></select></label>
+        <button id="todo-generate" type="button" data-i18n="todoGenerate">生成提示词</button>
+        <p class="todo-note" data-i18n="todoTokenWarning">提示词含临时令牌，仅交给可信 agent；HTTP 只适用于受信内网。可在下方撤销授权。</p>
+        <textarea id="todo-prompt-text" rows="5" readonly aria-label="待办更新提示词" data-i18n-aria-label="todoUpdatePrompt"></textarea>
+        <label><span data-i18n="editAgent">交给哪个 agent</span><select id="todo-agent"></select></label>
+        <div class="todo-actions"><button id="todo-refresh-agents" type="button" data-i18n="editRefreshAgents">刷新 agent 列表</button><button id="todo-copy" type="button" data-i18n="editCopy" disabled>复制提示词</button><button id="todo-send" type="button" data-i18n="editSend" disabled>发送给该 agent 执行</button></div>
+        <h3 data-i18n="todoActiveGrants">有效授权</h3><div id="todo-grants"></div>
+      </section>
+      <p id="todo-status" role="status" aria-live="polite"></p>
+    </aside>
     <aside id="terminal-tts-toolbar" aria-label="终端正文朗读" data-i18n-aria-label="terminalSpeechToolbar" hidden>
       <button id="terminal-tts-toggle" type="button" aria-expanded="false" aria-controls="terminal-tts-controls" aria-label="语音朗读工具栏">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>

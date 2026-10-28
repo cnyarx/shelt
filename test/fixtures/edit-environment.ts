@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditAgent, EditSubmission } from "../../src/preview-edits.ts";
 
-export async function editEnvironment(backend: "bun" | "rust", port: number) {
+export async function editEnvironment(backend: "bun" | "rust", port: number, agentFixture?: string) {
   const directory = await mkdtemp(join(tmpdir(), "shelt-preview-edits-"));
   const state = join(directory, "state"), base = `http://127.0.0.1:${port}`;
   await mkdir(state); await mkdir(join(directory, "bin"));
-  const fixture = new URL("./edit-agent.ts", import.meta.url).pathname;
+  const fixture = agentFixture || new URL("./edit-agent.ts", import.meta.url).pathname;
   const herdr = join(directory, "bin", "herdr"), ssh = join(directory, "bin", "ssh");
   await writeFile(herdr, `#!/bin/sh\nexec '${process.execPath}' '${fixture}' "$@"\n`);
   await writeFile(ssh, '#!/bin/sh\nfor last do :; done\nexport EDIT_REMOTE=1\nexec /bin/sh -c "$last"\n');

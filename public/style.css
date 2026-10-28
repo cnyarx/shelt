@@ -106,3 +106,45 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 #update-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border: 2px solid #14181c; border-radius: 50%; background: #f85149; pointer-events: none; }
 #update-status { margin: 6px 0 0; color: #9eb8c7; font-size: 12px; overflow-wrap: anywhere; }
 #update-status:empty { display: none; }
+#todo-toggle { position: fixed; z-index: 32; top: 54px; right: 10px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #ffffff24; border-radius: 50%; color: #c9d1d9; background: #14181ce6; cursor: pointer; }
+#todo-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#todo-toggle[aria-expanded="true"] { color: #62cbff; border-color: #31bafd; background: #123349; }
+#todo-count { position: absolute; top: -4px; right: -6px; padding: 0 4px; min-width: 12px; border-radius: 8px; color: #07141d; background: #62cbff; font: 10px/16px system-ui, sans-serif; text-align: center; }
+#todo-panel { position: fixed; z-index: 32; top: 98px; right: 10px; width: min(380px, calc(100vw - 20px)); max-height: calc(100% - 112px); box-sizing: border-box; overflow: auto; padding: 16px; border: 1px solid #30363d; border-radius: 14px; color: #e6edf3; background: #101418f5; box-shadow: 0 16px 48px #0008; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+#todo-panel h2, #todo-panel h3 { margin: 0; font-size: 14px; }
+#todo-panel h3 { margin-top: 14px; }
+.todo-heading, .todo-toolbar, .todo-actions, .todo-project-heading, .todo-row, .todo-grant { display: flex; gap: 6px; align-items: center; }
+.todo-heading { justify-content: space-between; margin-bottom: 12px; }
+.todo-toolbar, .todo-actions { flex-wrap: wrap; margin: 8px 0; }
+#todo-panel button, #todo-panel select, #todo-panel input:not([type="checkbox"]), #todo-panel textarea { box-sizing: border-box; min-width: 0; min-height: 30px; padding: 5px 8px; border: 1px solid #30363d; border-radius: 7px; color: inherit; background: #171e25; font: inherit; }
+#todo-panel button { cursor: pointer; }
+#todo-panel button:hover:not(:disabled) { color: #62cbff; border-color: #31bafd; }
+#todo-panel button:disabled { opacity: .45; cursor: default; }
+#todo-panel button:focus-visible, #todo-panel input:focus-visible, #todo-panel select:focus-visible, #todo-panel textarea:focus-visible, #todo-toggle:focus-visible { outline: 2px solid #31bafd; outline-offset: 2px; }
+#todo-panel label { display: grid; gap: 4px; margin: 8px 0; }
+#todo-panel .todo-toolbar label, #todo-panel .todo-check { display: flex; gap: 5px; align-items: center; }
+#todo-panel input[type="checkbox"] { accent-color: #31bafd; }
+#todo-project { flex: 1; width: 120px; }
+#todo-close { font-size: 20px !important; line-height: 1; }
+#todo-form { padding: 10px; margin: 10px 0; border: 1px solid #315f78; border-radius: 10px; }
+#todo-form input, #todo-form select, #todo-form textarea, #todo-prompt-panel > label > input, #todo-prompt-panel > label > select, #todo-prompt-text { width: 100%; }
+#todo-panel textarea { resize: vertical; }
+#todo-save, #todo-send { background: #31bafd !important; color: #04202e !important; }
+#todo-delete { color: #ff9d9d !important; margin-left: auto; }
+#todo-tree section { margin: 8px 0; }
+.todo-project-heading { padding: 7px 0; border-bottom: 1px solid #30363d; }
+.todo-project-heading strong, .todo-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.todo-progress { flex: none; color: #8b949e; font-size: 11px; }
+.todo-row { padding: 6px 0 6px min(calc(var(--depth) * 12px), 48px); }
+.todo-row > button, .todo-project-heading > button { flex: none; padding: 1px 6px !important; background: transparent !important; }
+#todo-panel .todo-row-state { flex: none; width: 93px; padding: 2px 1px; font-size: 11px; }
+#todo-panel .status-doing { color: #62cbff; }
+#todo-panel .status-blocked { color: #f2cc60; }
+#todo-panel .status-done { color: #7ee787; }
+#todo-panel .status-canceled { color: #8b949e; }
+#todo-connection, #todo-status, .todo-note { color: #8b949e; overflow-wrap: anywhere; font-size: 12px; }
+#todo-status { color: #9ed9f5; }
+#todo-prompt-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid #30363d; }
+.todo-grant { justify-content: space-between; margin-top: 8px; }
+.todo-grant span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 500px) { #todo-panel { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; max-height: min(65%, calc(100% - 108px)); } }

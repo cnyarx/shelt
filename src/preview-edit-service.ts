@@ -95,7 +95,11 @@ export class PreviewEditService {
   }
 
   async send(body: EditSubmission, target: HerdrTarget | null): Promise<Delivery> {
-    if (Buffer.byteLength(buildEditPrompt(body)) > 60 * 1024) return { error: "too_large" };
+    return this.sendText(body, target, buildEditPrompt(body));
+  }
+
+  async sendText(body: { requestId: string; paneId: string; targetId: string; session: string; grantId?: string }, target: HerdrTarget | null, prompt: string): Promise<Delivery> {
+    if (Buffer.byteLength(prompt) > 60 * 1024) return { error: "too_large" };
     await mkdir(this.directory, { recursive: true, mode: 0o700 }); await chmod(this.directory, 0o700);
     const digest = hash(JSON.stringify(body)), file = join(this.directory, `${body.requestId}.json`);
     const previous = await this.previous(file, digest, body.requestId); if (previous) return previous;
@@ -119,7 +123,7 @@ export class PreviewEditService {
         try { await handle.writeFile(JSON.stringify({ digest, state: "pending" })); await handle.sync(); await this.syncDirectory(); }
         finally { await handle.close(); }
         let delivery: Delivery;
-        try { await this.command(target, ["agent", "prompt", body.paneId], buildEditPrompt(body)); delivery = { state: "sent" }; }
+        try { await this.command(target, ["agent", "prompt", body.paneId], prompt); delivery = { state: "sent" }; }
         catch (e) { delivery = (e as Error).message === "agent_busy" ? { error: "agent_busy" } : { state: "uncertain" }; }
         try { await this.store(file, { digest, ...delivery }); } catch { return { state: "uncertain" }; }
         return delivery;

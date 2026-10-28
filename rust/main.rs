@@ -6,6 +6,7 @@ mod preview_edits;
 mod share_routes;
 mod shares;
 mod targets;
+mod todos;
 mod updater;
 
 use auth::{password_error, AuthStore, MAX_AUTH_BODY_BYTES};
@@ -94,6 +95,7 @@ struct AppState {
     interactive_previews: interactive_preview::InteractivePreviews,
     herdr_events: herdr_events::HerdrEvents,
     preview_edits: preview_edits::EditService,
+    todos: todos::TodoStore,
     updater: updater::Updater,
     failed_logins: Arc<Mutex<u32>>,
 }
@@ -419,10 +421,19 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         interactive_previews: interactive_preview::InteractivePreviews::default(),
         herdr_events: herdr_events::HerdrEvents::new(herdr_socket_path),
         preview_edits: preview_edits::EditService::new(state_dir().join("preview-edit-receipts")),
+        todos: todos::TodoStore::new(state_dir().join("todos.json")),
         updater: updater::Updater::new()?,
         failed_logins: Arc::new(Mutex::new(0)),
     };
     let app = Router::new()
+        .route(
+            "/api/todos",
+            any(todos::handler).layer(DefaultBodyLimit::max(128 * 1024)),
+        )
+        .route(
+            "/api/todos/{*path}",
+            any(todos::handler).layer(DefaultBodyLimit::max(128 * 1024)),
+        )
         .route("/ws", any(ws_handler))
         .route("/api/auth/status", get(auth_status_handler))
         .route(
@@ -1896,6 +1907,7 @@ mod tests {
             preview_edits: preview_edits::EditService::new(
                 env::temp_dir().join("shelt-edit-origin-test"),
             ),
+            todos: todos::TodoStore::new(env::temp_dir().join("shelt-todo-origin-test/todos.json")),
             updater: updater::Updater::new().unwrap(),
             failed_logins: Arc::new(Mutex::new(0)),
         };

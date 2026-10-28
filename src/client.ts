@@ -22,6 +22,7 @@ import { TerminalOutputPump } from "./terminal-output.ts";
 import { TerminalTtsController } from "./terminal-tts.ts";
 import { setupUpdates } from "./update-ui.ts";
 import { terminalPreviewUrl } from "./preview-source.ts";
+import { TodoController } from "./todo-ui.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -112,6 +113,7 @@ async function authStatus(): Promise<{ setupRequired: boolean; authenticated: bo
 function showAuth(required: boolean, message = "") {
   setupRequired = required;
   terminalTts?.setVisible(false);
+  todos.setVisible(false);
   outputPump?.close();
   outputPump = undefined;
   socket?.close();
@@ -223,6 +225,7 @@ function startTerminal() {
   authMount.hidden = true;
   mount.hidden = false;
   setSettingsVisible(true);
+  todos.setVisible(true);
   if (terminal) {
     terminalTts?.setVisible(true);
     fit?.fit();
@@ -325,6 +328,7 @@ window.addEventListener("focus", () => {
 installVisibleViewportSizing(scheduleResize);
 setupSettings({ setSwitching: (value) => { switchingTarget = value; }, checkUpdates: () => { void updates.check(); } });
 const updates = setupUpdates();
+const todos = new TodoController();
 setupAgentNotifications();
 installSheltiePeek(requiredElement("settings-toggle"), requiredElement("settings-panel"), requiredElement("sheltie-peek"));
 

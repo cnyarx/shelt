@@ -47,7 +47,7 @@ struct Submission {
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Agent {
+pub(super) struct Agent {
     target_id: String,
     connection: String,
     pane_id: String,
@@ -153,7 +153,7 @@ fn prompt(s: &Submission) -> String {
 fn shell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
-async fn command(
+pub(super) async fn command(
     launch: &LaunchTarget,
     target: Option<&targets::HerdrTarget>,
     args: &[&str],
@@ -294,7 +294,7 @@ fn agent(raw: &Value, target: Option<&targets::HerdrTarget>) -> Option<Agent> {
         session: hash(identity.as_bytes()),
     })
 }
-async fn named_agents(
+pub(super) async fn named_agents(
     launch: &LaunchTarget,
     target: Option<&targets::HerdrTarget>,
 ) -> Result<Vec<Agent>, &'static str> {
@@ -450,13 +450,33 @@ impl EditService {
         s: &Submission,
         target: Option<&targets::HerdrTarget>,
     ) -> Result<Value, std::io::Error> {
-        let prompt = prompt(s);
+        self.send_text(
+            state,
+            &serde_json::to_value(s).map_err(std::io::Error::other)?,
+            target,
+            &prompt(s),
+        )
+        .await
+    }
+    pub(super) async fn send_text(
+        &self,
+        state: &AppState,
+        request: &Value,
+        target: Option<&targets::HerdrTarget>,
+        prompt: &str,
+    ) -> Result<Value, std::io::Error> {
+        let s: Submission = serde_json::from_value(json!({
+            "path":"", "kind":"markdown", "capturedAt":"", "edits":[],
+            "requestId":request["requestId"], "targetId":request["targetId"],
+            "paneId":request["paneId"], "session":request["session"]
+        }))
+        .map_err(std::io::Error::other)?;
         if prompt.len() > 60 * 1024 {
             return Ok(json!({"error":"too_large"}));
         }
         fs::create_dir_all(&self.directory)?;
         fs::set_permissions(&self.directory, fs::Permissions::from_mode(0o700))?;
-        let checksum = hash(&serde_json::to_vec(s).map_err(std::io::Error::other)?);
+        let checksum = hash(&serde_json::to_vec(request).map_err(std::io::Error::other)?);
         let file = self.directory.join(format!("{}.json", s.request_id));
         if let Some(value) = self.previous(&file, &checksum, &s.request_id)? {
             return Ok(value);
@@ -516,7 +536,7 @@ impl EditService {
             &state.launch,
             target,
             &["agent", "prompt", &s.pane_id],
-            Some(&prompt),
+            Some(prompt),
         )
         .await
         {
