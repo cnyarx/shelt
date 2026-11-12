@@ -23,6 +23,7 @@ import { TerminalTtsController } from "./terminal-tts.ts";
 import { setupUpdates } from "./update-ui.ts";
 import { terminalPreviewUrl } from "./preview-source.ts";
 import { TodoController } from "./todo-ui.ts";
+import { MobileController } from "./mobile-ui.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -114,6 +115,7 @@ function showAuth(required: boolean, message = "") {
   setupRequired = required;
   terminalTts?.setVisible(false);
   todos.setVisible(false);
+  mobile.setVisible(false);
   outputPump?.close();
   outputPump = undefined;
   socket?.close();
@@ -139,6 +141,8 @@ function connect() {
   if (!terminal) return;
   const nextSocket = new WebSocket(`${scheme}://${location.host}/ws?cols=${terminal.cols}&rows=${terminal.rows}`);
   socket = nextSocket;
+  mobile.connection(false);
+  nextSocket.addEventListener("open", () => { if (socket === nextSocket) mobile.connection(true); });
   const currentTerminal = terminal;
   outputPump?.close();
   const nextOutputPump = new TerminalOutputPump(
@@ -160,15 +164,17 @@ function connect() {
       nextOutputPump.enqueue(event.data);
     }
   });
-  nextSocket.addEventListener("close", () => {
+  nextSocket.addEventListener("close", (event) => {
     if (socket !== nextSocket) return;
+    mobile.connection(false);
     nextOutputPump.close();
     terminalTts?.stop();
     if (outputPump === nextOutputPump) outputPump = undefined;
     socket = undefined;
     if (updates.active()) return;
-    if (switchingTarget) {
+    if (switchingTarget || (event.code === 1012 && event.reason === "Switching Herdr target")) {
       switchingTarget = false;
+      mobile.targetChanged();
       currentTerminal.reset();
       connect();
       return;
@@ -185,7 +191,7 @@ function send(message: unknown) {
 }
 
 function scheduleResize() {
-  if (!terminal || !fit) return;
+  if (!terminal || !fit || !mount.getClientRects().length) return;
   const dimensions = fit.proposeDimensions();
   if (!dimensions || (dimensions.cols === terminal.cols && dimensions.rows === terminal.rows)) return;
   if (resizeTimer) clearTimeout(resizeTimer);
@@ -200,6 +206,7 @@ function scheduleResize() {
 }
 
 async function uploadImage(file: File) {
+  const destination = socket, pane = mobile.destination();
   const response = await fetch("/api/upload", {
     method: "POST",
     credentials: "same-origin",
@@ -213,6 +220,7 @@ async function uploadImage(file: File) {
   }
   if (!response.ok) throw new Error(await response.text());
   const result = (await response.json()) as { ok: true; path: string };
+  if (socket !== destination || destination?.readyState !== WebSocket.OPEN || mobile.destination() !== pane) throw new Error("Terminal changed during upload");
   send({ type: "paste-path", path: result.path });
 }
 
@@ -226,6 +234,7 @@ function startTerminal() {
   mount.hidden = false;
   setSettingsVisible(true);
   todos.setVisible(true);
+  mobile.setVisible(true);
   if (terminal) {
     terminalTts?.setVisible(true);
     fit?.fit();
@@ -265,7 +274,7 @@ function startTerminal() {
     await writeClipboard(clipboard.text);
     return true;
   });
-  terminal.onData((data) => send({ type: "input", data }));
+  terminal.onData((data) => { const input = mobile.input(data); if (input) send({ type: "input", data: input }); });
   terminal.onBinary((data) => {
     if (socket?.readyState !== WebSocket.OPEN) return;
     socket.send(Uint8Array.from(data, (character) => character.charCodeAt(0)));
@@ -322,9 +331,14 @@ document.addEventListener("paste", (event) => {
 }, true);
 
 window.addEventListener("focus", () => {
-  if (!mount.hidden) terminal?.focus();
+  if (!mount.hidden && !document.body.classList.contains("mobile-enabled")) terminal?.focus();
 });
 
+const mobile = new MobileController({
+  write(data) { if (socket?.readyState !== WebSocket.OPEN) return false; send({ type: "input", data }); return true; },
+  focus() { terminal?.focus(); },
+  upload: uploadImage,
+});
 installVisibleViewportSizing(scheduleResize);
 setupSettings({ setSwitching: (value) => { switchingTarget = value; }, checkUpdates: () => { void updates.check(); } });
 const updates = setupUpdates();

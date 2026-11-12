@@ -29,6 +29,19 @@
       </form>
     </main>
     <main id="terminal" aria-label="Shelt terminal" hidden></main>
+    <button id="mobile-toggle" type="button" aria-label="手机模式" data-i18n-aria-label="mobileMode" hidden>▤</button>
+    <header id="mobile-header" hidden><button id="mobile-agents-toggle" type="button">智能体</button><span id="mobile-current"></span><button id="mobile-zoom" type="button" data-i18n="mobileZoom">放大/还原</button><button id="mobile-desktop" type="button" data-i18n="mobileDesktop">PC模式</button></header>
+    <aside id="mobile-agents" aria-label="智能体" data-i18n-aria-label="mobileAgents" hidden>
+      <header><h2 data-i18n="mobileAgents">智能体</h2><button id="mobile-refresh" type="button" data-i18n="mobileRefresh">刷新</button><button id="mobile-agents-close" type="button" aria-label="关闭" data-i18n-aria-label="mobileClose">×</button></header>
+      <p data-i18n="mobileAgentsNote">按 Herdr 的工作区、标签顺序排列；黄色边框表示需要确认。</p>
+      <div id="mobile-agent-list"></div>
+    </aside>
+    <footer id="mobile-controls" hidden>
+      <div id="mobile-actions"><button id="mobile-compose-toggle" type="button" data-i18n="mobileDraft">草稿</button><button id="mobile-keyboard" type="button" data-i18n="mobileKeyboard">键盘</button><button id="mobile-upload-button" type="button" data-i18n="mobileUpload">传图</button><input id="mobile-upload" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>
+      <div id="mobile-keys" aria-label="终端快捷键" data-i18n-aria-label="mobileKeys"></div>
+      <form id="mobile-compose" hidden><textarea id="mobile-draft" rows="2" maxlength="60000" aria-label="消息草稿" data-i18n-aria-label="mobileDraft" placeholder="写好后发送；不会自动重发" data-i18n-placeholder="mobilePlaceholder"></textarea><button id="mobile-send" type="submit" data-i18n="mobileSend">发送</button></form>
+      <p id="mobile-status" role="status" aria-live="polite"></p>
+    </footer>
     <button id="todo-toggle" type="button" aria-expanded="false" aria-controls="todo-panel" aria-label="待办清单" data-i18n-aria-label="todoList" title="待办清单" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 12l2 2 3-4M11 12h10M3 18l2 2 3-4M11 18h10"/></svg><span id="todo-count">0</span>
     </button>

@@ -9,7 +9,7 @@ import {
 } from "./auth.ts";
 import { embeddedAssets } from "./generated-assets.ts";
 import { ShareStore, imageSources, validShareKey } from "./shares.ts";
-import { LOCAL_TARGET_ID, TargetStore, targetError } from "./targets.ts";
+import { LOCAL_TARGET_ID, TargetStore, targetError, type HerdrTarget } from "./targets.ts";
 import { INTERACTIVE_CSP, InteractivePreviews } from "./interactive-preview.ts";
 import { checkSourceUpdate } from "./update-check.ts";
 import {
@@ -24,6 +24,7 @@ import { MAX_EDIT_BODY, PreviewEditService } from "./preview-edit-service.ts";
 import { validateEditDocument, type EditSubmission } from "./preview-edits.ts";
 import { TodoStore } from "./todo-store.ts";
 import { TodoHttp } from "./todo-http.ts";
+import { NativeControlConnection } from "./mobile-service.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -78,8 +79,7 @@ const todoHttp = new TodoHttp(new TodoStore(join(stateDir, "todos.json")), new P
 await mkdir(uploadDir, { recursive: true, mode: 0o700 });
 await chmod(uploadDir, 0o700);
 
-let activeSocket: Bun.ServerWebSocket<SessionData> | null = null;
-let activeProcess: Bun.Subprocess | null = null;
+const connections = new Set<Bun.ServerWebSocket<SessionData>>();
 let failedLogins = 0;
 const uploadedPaths = new Set<string>();
 const TERMINAL_OUTPUT_WINDOW_BYTES = 512 * 1024;
@@ -88,6 +88,10 @@ const MAX_TERMINAL_OUTPUT_QUEUE_BYTES = 1024 * 1024;
 type SessionData = {
   terminal: Bun.Terminal | null;
   process: Bun.Subprocess | null;
+  control: NativeControlConnection | null;
+  target: HerdrTarget | null;
+  kind: "terminal" | "control";
+  command: string[];
   cols: number;
   rows: number;
   outstandingOutputBytes: number;
@@ -337,6 +341,17 @@ const server = Bun.serve<SessionData>({
 
     if (url.pathname === "/api/todos" || url.pathname.startsWith("/api/todos/")) return todoHttp.handle(req);
 
+    if (url.pathname.startsWith("/api/mobile/")) {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      if (url.pathname !== "/api/mobile/control") return response("Not found", 404);
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (launch.mode !== "herdr") return response("Herdr unavailable", 503);
+      const state = targets.list(), target = state.targets.find(t => t.id === state.active) ?? null;
+      if (url.searchParams.get("target") !== state.active) return response("target_changed", 409);
+      if (!server.upgrade(req, { data: { terminal: null, process: null, control: null, target, kind: "control", command: [], cols: 0, rows: 0, outstandingOutputBytes: 0, outputQueue: [], outputQueueBytes: 0 } })) return response("Upgrade failed", 400);
+      return;
+    }
+
     if (url.pathname === "/api/preview-session" && req.method === "POST") {
       if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
       if (!authenticated(req)) return response("Authentication required", 401);
@@ -538,8 +553,10 @@ const server = Bun.serve<SessionData>({
       if (!authenticated(req)) return response("Authentication required", 401);
       const body = await jsonBody(req);
       if (!body || typeof body.id !== "string" || !targets.activate(body.id)) return json({ error: "Unknown target" }, 404);
-      activeProcess?.kill("SIGKILL");
-      activeSocket?.close(1012, "Switching Herdr target");
+      for (const socket of connections) {
+        socket.data.process?.kill(); socket.data.control?.close();
+        socket.close(1012, "Switching Herdr target");
+      }
       return json({ ok: true });
     }
 
@@ -548,10 +565,16 @@ const server = Bun.serve<SessionData>({
       if (!authenticated(req)) return response("Authentication required", 401);
       const cols = Math.min(1000, Math.max(1, Number.parseInt(url.searchParams.get("cols") || "120", 10) || 120));
       const rows = Math.min(500, Math.max(1, Number.parseInt(url.searchParams.get("rows") || "40", 10) || 40));
+      if (url.searchParams.has("pane")) return response("Use Herdr focus to switch panes", 400);
+      const command = [launch.command, ...(launch.mode === "herdr" ? targets.activeArgs() : launch.args)];
       if (!server.upgrade(req, {
         data: {
           terminal: null,
           process: null,
+          control: null,
+          target: null,
+          kind: "terminal",
+          command,
           cols,
           rows,
           outstandingOutputBytes: 0,
@@ -669,8 +692,13 @@ const server = Bun.serve<SessionData>({
     backpressureLimit: MAX_TERMINAL_OUTPUT_QUEUE_BYTES,
     closeOnBackpressureLimit: true,
     open(ws) {
-      activeSocket?.close(1012, "Replaced by a newer Shelt controller");
-      activeProcess?.kill("SIGKILL");
+      connections.add(ws);
+      if (ws.data.kind === "control") {
+        ws.data.control = new NativeControlConnection(launch, ws.data.target,
+          line => { if (ws.sendText(line) <= 0) ws.close(1013, "Herdr control backpressure"); },
+          () => ws.close(1011, "Herdr control disconnected"));
+        return;
+      }
       const env = { ...process.env };
       delete env.HERDR_ENV;
       delete env.HERDR_PANE_ID;
@@ -685,27 +713,27 @@ const server = Bun.serve<SessionData>({
         rows: ws.data.rows,
         data: (_terminal, data) => queueTerminalOutput(ws, data),
       });
-      const args = launch.mode === "herdr" ? targets.activeArgs() : launch.args;
-      const child = Bun.spawn([launch.command, ...args], {
+      const child = Bun.spawn(ws.data.command, {
         cwd: process.env.HOME || process.cwd(),
         env,
         terminal,
         onExit(_process, exitCode) {
-          if (activeProcess === child) activeProcess = null;
           if (!terminal.closed) terminal.close();
           ws.close(1011, `${launch.mode === "herdr" ? "Herdr" : "Shell"} exited (${exitCode})`);
         },
       });
       ws.data.terminal = terminal;
       ws.data.process = child;
-      activeSocket = ws;
-      activeProcess = child;
     },
     drain(ws) {
-      if (ws === activeSocket) flushTerminalOutput(ws);
+      if (ws.data.kind === "terminal") flushTerminalOutput(ws);
     },
     message(ws, raw) {
-      if (ws !== activeSocket || !ws.data.terminal) return;
+      if (ws.data.kind === "control") {
+        if (typeof raw !== "string" || !ws.data.control?.request(raw)) ws.close(1008, "Invalid Herdr request");
+        return;
+      }
+      if (!ws.data.terminal) return;
       if (typeof raw !== "string") {
         ws.data.terminal.write(raw);
         return;
@@ -727,11 +755,9 @@ const server = Bun.serve<SessionData>({
       }
     },
     close(ws) {
-      if (activeSocket === ws) activeSocket = null;
-      if (ws.data.process) {
-        ws.data.process.kill("SIGKILL");
-        if (activeProcess === ws.data.process) activeProcess = null;
-      }
+      connections.delete(ws);
+      ws.data.control?.close();
+      ws.data.process?.kill();
       if (ws.data.terminal && !ws.data.terminal.closed) ws.data.terminal.close();
     },
   },

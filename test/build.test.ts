@@ -110,6 +110,8 @@ describe("production bundle", () => {
     expect(preview.length).toBeGreaterThan(100_000);
     expect(client).not.toContain("Unsupported Mermaid diagram");
     expect(client).not.toContain('output:"mathml"');
+    expect(client).not.toContain("/api/mobile/chat");
+    expect(client).toContain("/api/mobile/control");
     expect(client).toContain('addEventListener("touchstart"');
     expect(client).toContain('addEventListener("touchmove"');
     expect(client).toContain('new WheelEvent("wheel"');

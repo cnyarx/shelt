@@ -2,6 +2,7 @@ mod auth;
 mod edge_tts;
 mod herdr_events;
 mod interactive_preview;
+mod mobile;
 mod preview_edits;
 mod share_routes;
 mod shares;
@@ -88,7 +89,8 @@ struct AppState {
     upload_dir: PathBuf,
     preview_roots: Arc<Vec<PathBuf>>,
     uploaded_paths: Arc<Mutex<HashSet<PathBuf>>>,
-    active: Arc<Mutex<Option<ActiveSession>>>,
+    active: Arc<Mutex<Vec<ActiveSession>>>,
+    control_reset: tokio::sync::broadcast::Sender<()>,
     auth: AuthStore,
     shares: shares::ShareStore,
     targets: targets::TargetStore,
@@ -104,6 +106,7 @@ struct AppState {
 struct WsQuery {
     cols: Option<u16>,
     rows: Option<u16>,
+    pane: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -152,6 +155,36 @@ fn valid_tts_rate(rate: f32) -> bool {
 
 fn tts_rate_percent(rate: f32) -> i32 {
     ((rate - 1.0) * 100.0).round() as i32
+}
+
+fn tts_speakable_text(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut result = String::with_capacity(text.len());
+    for (index, &original) in chars.iter().enumerate() {
+        let ch = if original == '_' || original == '-' {
+            ' '
+        } else if original == '.' {
+            let previous = index.checked_sub(1).and_then(|i| chars.get(i)).copied();
+            let next = chars.get(index + 1).copied();
+            if previous.is_some_and(|c| c.is_ascii_alphabetic())
+                && next.is_some_and(|c| c.is_ascii_alphanumeric())
+            {
+                ' '
+            } else {
+                original
+            }
+        } else {
+            original
+        };
+        if ch == ' ' {
+            if !result.ends_with(' ') {
+                result.push(' ');
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 fn escape_tts_text(text: &str) -> String {
@@ -414,7 +447,8 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         upload_dir,
         preview_roots: Arc::new(preview_roots),
         uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
-        active: Arc::new(Mutex::new(None)),
+        active: Arc::new(Mutex::new(Vec::new())),
+        control_reset: tokio::sync::broadcast::channel(16).0,
         auth,
         shares: shares::ShareStore::load(state_dir().join("shares.json"))?,
         targets: targets::TargetStore::load(state_dir().join("herdr-targets.json"))?,
@@ -435,6 +469,7 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             any(todos::handler).layer(DefaultBodyLimit::max(128 * 1024)),
         )
         .route("/ws", any(ws_handler))
+        .route("/api/mobile/control", any(mobile::handler))
         .route("/api/auth/status", get(auth_status_handler))
         .route(
             "/api/auth/setup",
@@ -540,8 +575,9 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
             result = &mut server => result?,
             _ = async { tokio::select! { _ = shutdown_signal() => {}, _ = state.updater.restart_requested() => {} } } => {
                 state.updater.stop_accepting();
-                let active = state.active.lock().unwrap().take();
-                if let Some(active) = active {
+                let _ = state.control_reset.send(());
+                let sessions = std::mem::take(&mut *state.active.lock().unwrap());
+                for active in sessions {
                     kill_group(active.pgid);
                     let _ = active.cancel.send(());
                     let mut exited = active.exited;
@@ -919,9 +955,9 @@ async fn targets_active_handler(
             );
         }
     }
-    let old = state.active.lock().unwrap().take();
-    if let Some(session) = old {
-        kill_group(session.pgid);
+    let _ = state.control_reset.send(());
+    let sessions = std::mem::take(&mut *state.active.lock().unwrap());
+    for session in sessions {
         let _ = session.cancel.send(());
     }
     secure(Json(serde_json::json!({"ok": true})).into_response())
@@ -976,7 +1012,7 @@ async fn tts_handler(State(state): State<AppState>, headers: HeaderMap, body: By
         .iter()
         .find(|voice| voice.name == request.voice)
         .unwrap();
-    let escaped_text = escape_tts_text(text);
+    let escaped_text = escape_tts_text(&tts_speakable_text(text));
     let synthesis = tokio::time::timeout(
         TTS_TIMEOUT,
         edge_tts::synthesize(&escaped_text, voice.name, tts_rate_percent(request.rate)),
@@ -1331,11 +1367,30 @@ async fn ws_handler(
     }
     let cols = query.cols.unwrap_or(120).clamp(1, 1000);
     let rows = query.rows.unwrap_or(40).clamp(1, 500);
+    if query.pane.is_some() {
+        return secure(
+            (StatusCode::BAD_REQUEST, "Use Herdr focus to switch panes").into_response(),
+        );
+    }
+    let args = if state.launch.mode == "herdr" {
+        state.targets.active_args()
+    } else {
+        state.launch.args.clone()
+    };
+    let command = std::iter::once(state.launch.command.to_string_lossy().into_owned())
+        .chain(args)
+        .collect();
     ws.max_message_size(1024 * 1024)
-        .on_upgrade(move |socket| session(socket, state, cols, rows))
+        .on_upgrade(move |socket| session(socket, state, cols, rows, command))
 }
 
-async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
+async fn session(
+    socket: WebSocket,
+    state: AppState,
+    cols: u16,
+    rows: u16,
+    terminal_command: Vec<String>,
+) {
     if state.updater.is_restarting() {
         return;
     }
@@ -1349,13 +1404,8 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
         Ok(v) => v,
         Err(_) => return,
     };
-    let extra_args = if state.launch.mode == "herdr" {
-        state.targets.active_args()
-    } else {
-        state.launch.args.clone()
-    };
-    let mut command = CommandBuilder::new(&state.launch.command);
-    for arg in &extra_args {
+    let mut command = CommandBuilder::new(&terminal_command[0]);
+    for arg in &terminal_command[1..] {
         command.arg(arg);
     }
     command.cwd(env::var_os("HOME").unwrap_or_else(|| ".".into()));
@@ -1408,15 +1458,12 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
             });
             return;
         }
-        if let Some(old) = active.replace(ActiveSession {
+        active.push(ActiveSession {
             id,
             pgid,
             cancel: cancel_tx,
             exited: exited_rx,
-        }) {
-            kill_group(old.pgid);
-            let _ = old.cancel.send(());
-        }
+        });
     }
     let (pty_tx, mut pty_rx) = mpsc::channel::<Vec<u8>>(TERMINAL_OUTPUT_CHANNEL_CAPACITY);
     std::thread::spawn(move || {
@@ -1438,7 +1485,10 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
     let mut outstanding_output_bytes = 0usize;
     loop {
         tokio::select! {
-            _ = &mut cancel_rx => break,
+            _ = &mut cancel_rx => {
+                let _ = ws_tx.send(Message::Close(Some(axum::extract::ws::CloseFrame { code: 1012, reason: "Switching Herdr target".into() }))).await;
+                break;
+            },
             _ = exit_rx.recv() => break,
             Some(data) = pty_rx.recv(), if outstanding_output_bytes <= TERMINAL_OUTPUT_WINDOW_BYTES - TERMINAL_OUTPUT_CHUNK_BYTES => {
                 outstanding_output_bytes += data.len();
@@ -1465,10 +1515,11 @@ async fn session(socket: WebSocket, state: AppState, cols: u16, rows: u16) {
         }
     }
     kill_group(pgid);
-    let mut active = state.active.lock().unwrap();
-    if active.as_ref().is_some_and(|session| session.id == id) {
-        *active = None;
-    }
+    state
+        .active
+        .lock()
+        .unwrap()
+        .retain(|session| session.id != id);
 }
 
 fn kill_group(pgid: i32) {
@@ -1846,6 +1897,15 @@ fn passwd_shell() -> Option<String> {
 mod tests {
     use super::*;
     #[test]
+    fn tts_speakable_text_normalizes_symbols() {
+        assert_eq!(tts_speakable_text("a_b__c"), "a b c");
+        assert_eq!(tts_speakable_text("文件_名称"), "文件 名称");
+        assert_eq!(tts_speakable_text("a-b_c.d"), "a b c d");
+        assert_eq!(tts_speakable_text("v0.0.35"), "v0.0.35");
+        assert_eq!(tts_speakable_text("结束. 下一句"), "结束. 下一句");
+        assert_eq!(tts_speakable_text("plain text"), "plain text");
+    }
+    #[test]
     fn image_security() {
         assert_eq!(image_extension("image/png"), Some("png"));
         assert!(has_image_signature(
@@ -1888,7 +1948,8 @@ mod tests {
             upload_dir: PathBuf::new(),
             preview_roots: Arc::new(vec![PathBuf::from("/home/user")]),
             uploaded_paths: Arc::new(Mutex::new(HashSet::new())),
-            active: Arc::new(Mutex::new(None)),
+            active: Arc::new(Mutex::new(Vec::new())),
+            control_reset: tokio::sync::broadcast::channel(16).0,
             auth: AuthStore::load(
                 env::temp_dir().join(format!("shelt-auth-test-{}", std::process::id())),
                 false,

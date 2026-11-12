@@ -148,3 +148,41 @@ body { position: fixed; top: var(--shelt-viewport-top, 0); left: 0; width: 100%;
 .todo-grant { justify-content: space-between; margin-top: 8px; }
 .todo-grant span { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 500px) { #todo-panel { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; max-height: min(65%, calc(100% - 108px)); } }
+#mobile-toggle { position: fixed; z-index: 31; right: 10px; top: 98px; width: 34px; height: 34px; border: 1px solid #30363d; border-radius: 50%; color: #c9d1d9; background: #14181ce6; font-size: 21px; cursor: pointer; }
+#mobile-header, #mobile-controls, #mobile-agents { box-sizing: border-box; color: #e6edf3; background: #0d1117; font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
+.mobile-enabled { display: flex; flex-direction: column; padding-top: 49px; box-sizing: border-box; }
+.mobile-enabled #terminal { flex: 1; min-height: 0; height: auto; }
+.mobile-enabled #mobile-toggle { top: 56px; }
+#mobile-header { position: absolute; left: 0; top: 0; right: 0; display: flex; align-items: center; gap: 6px; padding: 5px 8px; height: 49px; z-index: 28; border-bottom: 1px solid #30363d; }
+#mobile-current { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#mobile-header button, #mobile-controls button, #mobile-agents button { min-height: 38px; padding: 5px 10px; border: 1px solid #30363d; border-radius: 7px; color: inherit; background: #171e25; font: inherit; cursor: pointer; touch-action: manipulation; }
+#mobile-header button:focus-visible, #mobile-controls button:focus-visible, #mobile-agents button:focus-visible { outline: 2px solid #31bafd; }
+#mobile-controls { flex: none; padding: 5px 6px max(5px, env(safe-area-inset-bottom)); z-index: 28; border-top: 1px solid #30363d; max-height: 48%; overflow: auto; }
+#mobile-actions { display: flex; gap: 5px; margin-bottom: 5px; }
+#mobile-actions button { font-size: 13px; min-height: 32px; }
+#mobile-keys { display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; }
+#mobile-keys button { flex: none; min-width: 38px; user-select: none; -webkit-user-select: none; }
+#mobile-controls button[aria-pressed="true"] { background: #31bafd; color: #04202e; }
+#mobile-controls button:disabled { opacity: .45; cursor: default; }
+#mobile-compose { display: flex; align-items: stretch; gap: 6px; margin-top: 5px; }
+#mobile-draft { box-sizing: border-box; flex: 1; width: 0; min-width: 0; resize: none; padding: 8px; border: 1px solid #315f78; border-radius: 8px; font: 16px/1.4 system-ui, sans-serif; color: #fff; background: #000; }
+#mobile-send { background: #31bafd !important; color: #04202e !important; }
+#mobile-status { margin: 3px 0 0; color: #9ed9f5; font-size: 12px; overflow-wrap: anywhere; }
+#mobile-status:empty { display: none; }
+#mobile-agents { position: absolute; z-index: 40; inset: 49px 0 0; overflow: auto; padding: 14px; }
+#mobile-agents header { display: flex; align-items: center; gap: 8px; }
+#mobile-agents h2 { flex: 1; margin: 0; font-size: 18px; }
+#mobile-agents p { font-size: 13px; color: #8b949e; }
+#mobile-agent-list { display: grid; gap: 8px; }
+#mobile-agent-list button { text-align: left; width: 100%; min-width: 0; padding: 12px; overflow-wrap: anywhere; white-space: normal; }
+.mobile-agent-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.mobile-agent-head strong { min-width: 0; }
+.mobile-agent strong, .mobile-agent span { display: block; }
+.mobile-agent span { color: #8b949e; font-size: 12px; }
+.mobile-status-dot { flex: none; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; box-sizing: border-box; background: transparent; }
+.mobile-agent.status-idle .mobile-status-dot { border: 2px solid #a6e3a1; }
+.mobile-agent.status-working .mobile-status-dot { background: #f9e2af; }
+.mobile-agent.status-done .mobile-status-dot { background: #94e2d5; }
+.mobile-agent.status-blocked .mobile-status-dot, .mobile-agent.status-waiting .mobile-status-dot { background: #f38ba8; }
+.mobile-agent.status-unknown .mobile-status-dot { border: 2px solid #6c7086; }
+@media (max-width: 700px) { .mobile-enabled #terminal-tts-toolbar, .mobile-enabled #settings-toggle { top: 54px; } .mobile-enabled #todo-toggle { top: 96px; } .mobile-enabled #mobile-toggle { top: 138px; } }

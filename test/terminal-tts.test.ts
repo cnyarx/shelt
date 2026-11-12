@@ -53,6 +53,19 @@ describe("terminal speech playback", () => {
     instance.stop();
   });
 
+  test("replaces underscores, hyphens and identifier dots with spaces before the TTS request", async () => {
+    const texts: string[] = [];
+    globalThis.fetch = (async (_url, options) => {
+      texts.push(JSON.parse(options!.body as string).text);
+      return new Response(new Blob(["audio"]));
+    }) as typeof fetch;
+    const { instance } = player();
+    instance.enqueue("a-b_c.d", () => {});
+    await tick();
+    expect(texts).toEqual(["a b c d"]);
+    instance.stop();
+  });
+
   test("pause during synthesis waits before playing", async () => {
     let resolveFetch!: (response: Response) => void;
     globalThis.fetch = (() => new Promise<Response>((resolve) => { resolveFetch = resolve; })) as unknown as typeof fetch;

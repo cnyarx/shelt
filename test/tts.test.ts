@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { MAX_TTS_TEXT_CHARS, normalizeTtsText, splitTtsText } from "../src/tts.ts";
+import { MAX_TTS_TEXT_CHARS, normalizeTtsText, splitTtsText, ttsSpeakableText } from "../src/tts.ts";
 
 describe("preview TTS", () => {
   test("normalizes whitespace and ignores empty text", () => {
     expect(normalizeTtsText("  第一段\n\t第二行  ")).toBe("第一段 第二行");
+    expect(normalizeTtsText("a_b-c.d")).toBe("a_b-c.d");
+    expect(ttsSpeakableText("a_b__c")).toBe("a b c");
+    expect(ttsSpeakableText("a-b_c.d")).toBe("a b c d");
+    expect(ttsSpeakableText("v0.0.35")).toBe("v0.0.35");
+    expect(ttsSpeakableText("结束. 下一句")).toBe("结束. 下一句");
     expect(splitTtsText(" \n\t ")).toEqual([]);
   });
 

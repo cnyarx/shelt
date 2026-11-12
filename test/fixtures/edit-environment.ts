@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditAgent, EditSubmission } from "../../src/preview-edits.ts";
 
-export async function editEnvironment(backend: "bun" | "rust", port: number, agentFixture?: string) {
+export async function editEnvironment(backend: "bun" | "rust", port: number, agentFixture?: string, extraEnvironment: (directory: string) => Record<string, string> = () => ({})) {
   const directory = await mkdtemp(join(tmpdir(), "shelt-preview-edits-"));
   const state = join(directory, "state"), base = `http://127.0.0.1:${port}`;
   await mkdir(state); await mkdir(join(directory, "bin"));
@@ -20,7 +20,7 @@ export async function editEnvironment(backend: "bun" | "rust", port: number, age
   let control: Record<string, unknown> = {};
   const setControl = async (value: Record<string, unknown>) => { control = value; await writeFile(join(directory, "control.json"), JSON.stringify(value)); };
   await setControl({});
-  const env = { ...process.env, HOME: directory, PATH: `${join(directory, "bin")}:${process.env.PATH}`, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: state, SHELT_UPLOAD_DIR: join(directory, "uploads"), SHELT_PREVIEW_ROOTS: directory, SHELT_PUBLIC_HOSTS: `127.0.0.1:${port}`, SHELT_MODE: "herdr", SHELT_HERDR_BIN: herdr, SHELT_EDIT_FIXTURE: directory };
+  const env = { ...process.env, HOME: directory, PATH: `${join(directory, "bin")}:${process.env.PATH}`, SHELT_HOST: "127.0.0.1", SHELT_PORT: String(port), SHELT_STATE_DIR: state, SHELT_UPLOAD_DIR: join(directory, "uploads"), SHELT_PREVIEW_ROOTS: directory, SHELT_PUBLIC_HOSTS: `127.0.0.1:${port}`, SHELT_MODE: "herdr", SHELT_HERDR_BIN: herdr, SHELT_EDIT_FIXTURE: directory, ...extraEnvironment(directory) };
   let child: Bun.Subprocess<"ignore", "pipe", "pipe">, cookie = "";
   const start = async () => {
     child = Bun.spawn(backend === "rust" ? ["target/debug/shelt", "foreground"] : ["bun", "src/server.ts"], { env, stdin: "ignore", stdout: "pipe", stderr: "pipe" });

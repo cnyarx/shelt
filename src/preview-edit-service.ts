@@ -18,7 +18,7 @@ export class PreviewEditService {
   private readonly busy = new Set<string>();
   constructor(private launch: LaunchTarget, private directory: string, private env = process.env) {}
 
-  private async command(target: HerdrTarget | null, args: string[], prompt?: string): Promise<Record<string, any>> {
+  async command(target: HerdrTarget | null, args: string[], prompt?: string): Promise<Record<string, any>> {
     const env = herdrPaneEnvironment(this.env);
     const command = target ? ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "--", target.remote,
       `PATH="$HOME/bin:$HOME/.local/bin:$PATH"; export PATH; exec herdr ${target.session ? `--session ${quote(target.session)} ` : ""}${args.map(quote).join(" ")}${prompt === undefined ? "" : ' "$(cat)"'}`] : [this.launch.command, ...args, ...(prompt === undefined ? [] : [prompt])];

@@ -10,6 +10,10 @@ export function normalizeTtsText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+export function ttsSpeakableText(value: string): string {
+  return normalizeTtsText(value.replace(/[_-]/g, " ").replace(/([A-Za-z])\.(?=[A-Za-z0-9])/g, "$1 "));
+}
+
 export function splitTtsText(value: string, maxChars = MAX_TTS_TEXT_CHARS): string[] {
   const text = normalizeTtsText(value);
   if (!text) return [];
@@ -219,7 +223,7 @@ export class PreviewTtsController {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: this.voiceSelect.value, rate: Number(this.rateSelect.value) }),
+        body: JSON.stringify({ text: ttsSpeakableText(text), voice: this.voiceSelect.value, rate: Number(this.rateSelect.value) }),
         signal: this.abortController.signal,
       });
       if (!response.ok) return null;

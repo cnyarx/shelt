@@ -1,6 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
 import { onLanguageChange, t, type MessageKey } from "./i18n.ts";
 import { readSpeechGrid, readySpeechText, speechView, SpeechTranscript, type SpeechRegion, type SpeechView } from "./terminal-speech.ts";
+import { ttsSpeakableText } from "./tts.ts";
 
 type AudioChunk = { text: string; start: () => void };
 type PlayerState = "idle" | "loading" | "speaking" | "paused";
@@ -61,7 +62,7 @@ export class TerminalSpeechPlayer {
       const response = await fetch("/api/tts", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: chunk.text, ...this.preferences() }), signal,
+        body: JSON.stringify({ text: ttsSpeakableText(chunk.text), ...this.preferences() }), signal,
       });
       return response.ok ? await response.blob() : null;
     } catch { return null; }
