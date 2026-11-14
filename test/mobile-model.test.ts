@@ -50,6 +50,16 @@ test("one native API bridge serves local and SSH targets without pane attach", (
 
 test("Ctrl+Y and mobile Ctrl inputs produce control bytes, never raw IME text", () => {
   expect(mobileKey("Ctrl+Y")).toBe("\x19");
+  expect(mobileKey("PgUp")).toBe("\x1b[5~");
+  expect(mobileKey("PgDn")).toBe("\x1b[6~");
+  expect(mobileKey("Ctrl+Home")).toBe("\x1b[1;5H");
+  expect(mobileKey("Ctrl+End")).toBe("\x1b[1;5F");
+  expect(mobileKey("Home")).toBe("\x1b[H");
+  expect(mobileKey("End")).toBe("\x1b[F");
+  expect(mobileKey("Home", true)).toBe("\x1b[1;5H");
+  expect(mobileKey("End", true)).toBe("\x1b[1;5F");
+  expect(mobileKey("PgUp", true)).toBe("\x1b[5;5~");
+  expect(mobileKey("PgDn", true)).toBe("\x1b[6;5~");
   for (const key of ["y", "Y", "yes"]) expect(mobileKey(key, true)).toBe("\x19");
   expect(mobileKey("↓", true)).toBe("\x1b[1;5B");
   expect(mobileKey("Tab", true)).toBe("\t");

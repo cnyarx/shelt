@@ -118,6 +118,13 @@ test("mobile key buttons prevent pointer focus loss, support Ctrl+Y and stop rep
   button("Esc").handlers.pointerdown({ preventDefault: () => prevented++ }); button("Esc").handlers.mousedown({ preventDefault: () => prevented++ }); expect(prevented).toBe(2);
   button("Ctrl").handlers.click({ detail: 1 }); expect(env.ui.input("yes")).toBe(""); expect(env.writes.at(-1)).toBe("\x19"); expect(env.ui.input("c")).toBe("c");
   button("Ctrl+Y").handlers.click({ detail: 1 }); expect(env.writes.at(-1)).toBe("\x19");
+  button("PgUp").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[5~"); expect(env.ui.repeat).toBeDefined();
+  button("PgUp").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
+  button("PgDn").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[6~"); expect(env.ui.repeat).toBeDefined();
+  button("PgDn").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
+  button("Ctrl+Home").handlers.click({ detail: 1 }); expect(env.writes.at(-1)).toBe("\x1b[1;5H");
+  button("Ctrl").handlers.click({ detail: 1 }); button("Ctrl+End").handlers.click({ detail: 1 });
+  expect(env.writes.at(-1)).toBe("\x1b[1;5F"); expect(button("Ctrl").attributes["aria-pressed"]).toBe("false");
   button("↑").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[A"); expect(env.ui.repeat).toBeDefined();
   button("↑").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
   button("Ctrl").handlers.click({ detail: 1 }); expect(env.ui.input("中文")).toBe(""); expect(button("Ctrl").attributes["aria-pressed"]).toBe("true");
@@ -129,8 +136,10 @@ test("Ctrl in draft handles keyboard and mobile input without modifying the draf
   const draft = env.get("mobile-draft"), ctrl = env.get("mobile-keys").children.find((b: any) => b.dataset.key === "Ctrl");
   draft.value = "keep draft"; draft.setSelectionRange(3, 6); let prevented = 0;
   ctrl.handlers.click({ detail: 1 }); draft.handlers.keydown({ key: "y", preventDefault() { prevented++; } });
+  ctrl.handlers.click({ detail: 1 }); draft.handlers.keydown({ key: "Home", preventDefault() { prevented++; } });
+  ctrl.handlers.click({ detail: 1 }); draft.handlers.keydown({ key: "End", preventDefault() { prevented++; } });
   ctrl.handlers.click({ detail: 1 }); draft.handlers.beforeinput({ inputType: "insertText", data: "yes", cancelable: true, preventDefault() { prevented++; } });
-  expect(env.writes).toEqual(["\x19", "\x19"]); expect(prevented).toBe(2); expect(draft.value).toBe("keep draft");
+  expect(env.writes).toEqual(["\x19", "\x1b[1;5H", "\x1b[1;5F", "\x19"]); expect(prevented).toBe(4); expect(draft.value).toBe("keep draft");
   ctrl.handlers.click({ detail: 1 }); draft.handlers.beforeinput({ inputType: "insertText", data: "a", cancelable: false });
   draft.value = "keeaa draft"; draft.handlers.input({ data: "a" }); expect(env.writes.at(-1)).toBe("\x01"); expect(draft.value).toBe("keep draft");
 });

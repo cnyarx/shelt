@@ -25,14 +25,28 @@ export function nativeAgents(snapshot: NativeSnapshot): MobileAgent[] {
   });
 }
 
+const CTRL_KEYS: Record<string, string> = {
+  " ": "\x00", "@": "\x00", "[": "\x1b", "\\": "\x1c", "]": "\x1d", "^": "\x1e", "_": "\x1f", "?": "\x7f",
+  "↑": "\x1b[1;5A", "↓": "\x1b[1;5B", "→": "\x1b[1;5C", "←": "\x1b[1;5D",
+  ArrowUp: "\x1b[1;5A", ArrowDown: "\x1b[1;5B", ArrowRight: "\x1b[1;5C", ArrowLeft: "\x1b[1;5D",
+  Home: "\x1b[1;5H", End: "\x1b[1;5F", PgUp: "\x1b[5;5~", PageUp: "\x1b[5;5~", PgDn: "\x1b[6;5~", PageDown: "\x1b[6;5~",
+  Enter: "\r", Tab: "\t", Esc: "\x1b", Backspace: "\x08", "Shift+Tab": "\x1b[Z",
+};
+
+const PLAIN_KEYS: Record<string, string> = {
+  Esc: "\x1b", Tab: "\t", "Shift+Tab": "\x1b[Z", Enter: "\r", "Ctrl+C": "\x03", "Ctrl+Y": "\x19",
+  PgUp: "\x1b[5~", PageUp: "\x1b[5~", PgDn: "\x1b[6~", PageDown: "\x1b[6~",
+  "Ctrl+Home": "\x1b[1;5H", "Ctrl+End": "\x1b[1;5F", Home: "\x1b[H", End: "\x1b[F",
+  "↑": "\x1b[A", "↓": "\x1b[B", "→": "\x1b[C", "←": "\x1b[D",
+};
+
 export function mobileKey(key: string, ctrl = false): string {
   if (ctrl) {
-    if (/^[a-z]/i.test(key)) {
-      if (key.length === 1 || !["Esc", "Tab", "Enter", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Shift+Tab"].includes(key)) return String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64);
-    }
-    return ({ " ": "\x00", "@": "\x00", "[": "\x1b", "\\": "\x1c", "]": "\x1d", "^": "\x1e", "_": "\x1f", "?": "\x7f", "↑": "\x1b[1;5A", "↓": "\x1b[1;5B", "→": "\x1b[1;5C", "←": "\x1b[1;5D", ArrowUp: "\x1b[1;5A", ArrowDown: "\x1b[1;5B", ArrowRight: "\x1b[1;5C", ArrowLeft: "\x1b[1;5D", Enter: "\r", Tab: "\t", Esc: "\x1b", Backspace: "\x08", "Shift+Tab": "\x1b[Z" } as Record<string, string>)[key] ?? (/^[\x00-\x1f\x7f]$/.test(key) ? key : "");
+    if (key in CTRL_KEYS) return CTRL_KEYS[key]!;
+    if (/^[a-z]/i.test(key)) return String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64);
+    return /^[\x00-\x1f\x7f]$/.test(key) ? key : "";
   }
-  return ({ Esc: "\x1b", Tab: "\t", "Shift+Tab": "\x1b[Z", Enter: "\r", "Ctrl+C": "\x03", "Ctrl+Y": "\x19", "↑": "\x1b[A", "↓": "\x1b[B", "→": "\x1b[C", "←": "\x1b[D" } as Record<string, string>)[key] ?? key;
+  return PLAIN_KEYS[key] ?? key;
 }
 
 export class MobileSender {

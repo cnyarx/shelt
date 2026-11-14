@@ -49,7 +49,7 @@ export class MobileController {
       if (!this.ctrl || event.isComposing || ["Shift", "Control", "Alt", "Meta", "Process", "Dead", "Unidentified"].includes(event.key)) return;
       event.preventDefault();
       const key = event.key === "Escape" ? "Esc" : event.key;
-      this.sendControl(key.length === 1 || ["Esc", "Tab", "Enter", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key) ? key : "");
+      this.sendControl(key.length === 1 || ["Esc", "Tab", "Enter", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(key) ? key : "");
     });
     draft.addEventListener("beforeinput", event => {
       if (consumedComposition) { if (event.cancelable) event.preventDefault(); return; }
@@ -74,7 +74,8 @@ export class MobileController {
     });
     node("mobile-keyboard").addEventListener("click", () => { if (node("mobile-compose").hidden) this.options.focus(); else draft.focus(); });
     const keys = node("mobile-keys");
-    for (const label of ["Esc", "Tab", "Shift+Tab", "Ctrl", "Ctrl+Y", "Ctrl+C", "C", "D", "L", "Z", "←", "↑", "↓", "→", "Enter"]) {
+    const repeatableKeys = new Set(["←", "↑", "↓", "→", "PgUp", "PgDn"]);
+    for (const label of ["Esc", "Tab", "Shift+Tab", "Ctrl", "Ctrl+Y", "Ctrl+C", "PgUp", "PgDn", "Ctrl+Home", "Ctrl+End", "C", "D", "L", "Z", "←", "↑", "↓", "→", "Enter"]) {
       const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.dataset.key = label;
       if (label === "Ctrl") button.setAttribute("aria-pressed", "false");
       const act = () => {
@@ -88,13 +89,13 @@ export class MobileController {
       };
       button.addEventListener("pointerdown", e => {
         e.preventDefault();
-        if (!["←", "↑", "↓", "→"].includes(label)) return;
+        if (!repeatableKeys.has(label)) return;
         this.stopRepeat(); button.setPointerCapture(e.pointerId); act();
         const repeat = () => { act(); this.repeat = setTimeout(repeat, 80); };
         this.repeat = setTimeout(repeat, 400);
       });
       button.addEventListener("mousedown", e => e.preventDefault());
-      button.addEventListener("click", e => { if (!["←", "↑", "↓", "→"].includes(label) || e.detail === 0) act(); });
+      button.addEventListener("click", e => { if (!repeatableKeys.has(label) || e.detail === 0) act(); });
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) button.addEventListener(name, () => this.stopRepeat());
       keys.append(button);
     }
