@@ -38,6 +38,11 @@ const PLAIN_KEYS: Record<string, string> = {
   PgUp: "\x1b[5~", PageUp: "\x1b[5~", PgDn: "\x1b[6~", PageDown: "\x1b[6~",
   "Ctrl+Home": "\x1b[1;5H", "Ctrl+End": "\x1b[1;5F", Home: "\x1b[H", End: "\x1b[F",
   "↑": "\x1b[A", "↓": "\x1b[B", "→": "\x1b[C", "←": "\x1b[D",
+  "Alt+S": "\x1bs",
+  "Alt+PgUp": "\x1b[5;3~", "Alt+PageUp": "\x1b[5;3~",
+  "Alt+PgDn": "\x1b[6;3~", "Alt+PageDown": "\x1b[6;3~",
+  "Ctrl+Alt+↑": "\x1b[1;7A", "Ctrl+Alt+↓": "\x1b[1;7B",
+  "Ctrl+Alt+ArrowUp": "\x1b[1;7A", "Ctrl+Alt+ArrowDown": "\x1b[1;7B",
 };
 
 export function mobileKey(key: string, ctrl = false): string {

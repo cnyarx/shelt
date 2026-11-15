@@ -60,6 +60,15 @@ test("Ctrl+Y and mobile Ctrl inputs produce control bytes, never raw IME text", 
   expect(mobileKey("End", true)).toBe("\x1b[1;5F");
   expect(mobileKey("PgUp", true)).toBe("\x1b[5;5~");
   expect(mobileKey("PgDn", true)).toBe("\x1b[6;5~");
+  expect(mobileKey("Alt+S")).toBe("\x1bs");
+  expect(mobileKey("Alt+PgUp")).toBe("\x1b[5;3~");
+  expect(mobileKey("Alt+PageUp")).toBe("\x1b[5;3~");
+  expect(mobileKey("Alt+PgDn")).toBe("\x1b[6;3~");
+  expect(mobileKey("Alt+PageDown")).toBe("\x1b[6;3~");
+  expect(mobileKey("Ctrl+Alt+↑")).toBe("\x1b[1;7A");
+  expect(mobileKey("Ctrl+Alt+↓")).toBe("\x1b[1;7B");
+  expect(mobileKey("Ctrl+Alt+ArrowUp")).toBe("\x1b[1;7A");
+  expect(mobileKey("Ctrl+Alt+ArrowDown")).toBe("\x1b[1;7B");
   for (const key of ["y", "Y", "yes"]) expect(mobileKey(key, true)).toBe("\x19");
   expect(mobileKey("↓", true)).toBe("\x1b[1;5B");
   expect(mobileKey("Tab", true)).toBe("\t");

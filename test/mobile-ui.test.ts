@@ -125,6 +125,15 @@ test("mobile key buttons prevent pointer focus loss, support Ctrl+Y and stop rep
   button("Ctrl+Home").handlers.click({ detail: 1 }); expect(env.writes.at(-1)).toBe("\x1b[1;5H");
   button("Ctrl").handlers.click({ detail: 1 }); button("Ctrl+End").handlers.click({ detail: 1 });
   expect(env.writes.at(-1)).toBe("\x1b[1;5F"); expect(button("Ctrl").attributes["aria-pressed"]).toBe("false");
+  button("Alt+S").handlers.click({ detail: 1 }); expect(env.writes.at(-1)).toBe("\x1bs");
+  button("Alt+PgUp").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[5;3~"); expect(env.ui.repeat).toBeDefined();
+  button("Alt+PgUp").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
+  button("Alt+PgDn").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[6;3~"); expect(env.ui.repeat).toBeDefined();
+  button("Alt+PgDn").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
+  button("Ctrl+Alt+↑").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[1;7A"); expect(env.ui.repeat).toBeDefined();
+  button("Ctrl+Alt+↑").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
+  button("Ctrl").handlers.click({ detail: 1 }); button("Ctrl+Alt+↓").handlers.click({ detail: 0 });
+  expect(env.writes.at(-1)).toBe("\x1b[1;7B"); expect(button("Ctrl").attributes["aria-pressed"]).toBe("false");
   button("↑").handlers.pointerdown({ preventDefault() {}, pointerId: 1 }); expect(env.writes.at(-1)).toBe("\x1b[A"); expect(env.ui.repeat).toBeDefined();
   button("↑").handlers.pointercancel(); expect(env.ui.repeat).toBeUndefined();
   button("Ctrl").handlers.click({ detail: 1 }); expect(env.ui.input("中文")).toBe(""); expect(button("Ctrl").attributes["aria-pressed"]).toBe("true");

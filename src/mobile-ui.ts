@@ -74,8 +74,8 @@ export class MobileController {
     });
     node("mobile-keyboard").addEventListener("click", () => { if (node("mobile-compose").hidden) this.options.focus(); else draft.focus(); });
     const keys = node("mobile-keys");
-    const repeatableKeys = new Set(["←", "↑", "↓", "→", "PgUp", "PgDn"]);
-    for (const label of ["Esc", "Tab", "Shift+Tab", "Ctrl", "Ctrl+Y", "Ctrl+C", "PgUp", "PgDn", "Ctrl+Home", "Ctrl+End", "C", "D", "L", "Z", "←", "↑", "↓", "→", "Enter"]) {
+    const repeatableKeys = new Set(["←", "↑", "↓", "→", "PgUp", "PgDn", "Alt+PgUp", "Alt+PgDn", "Ctrl+Alt+↑", "Ctrl+Alt+↓"]);
+    for (const label of ["Esc", "Tab", "Shift+Tab", "Ctrl", "Ctrl+Y", "Ctrl+C", "PgUp", "PgDn", "Ctrl+Home", "Ctrl+End", "Alt+S", "Alt+PgUp", "Alt+PgDn", "Ctrl+Alt+↑", "Ctrl+Alt+↓", "C", "D", "L", "Z", "←", "↑", "↓", "→", "Enter"]) {
       const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.dataset.key = label;
       if (label === "Ctrl") button.setAttribute("aria-pressed", "false");
       const act = () => {
@@ -84,7 +84,7 @@ export class MobileController {
           this.ctrl = !this.ctrl; snapshot(); button.setAttribute("aria-pressed", String(this.ctrl));
           this.status(t(this.ctrl ? "mobileCtrlReady" : "mobileCtrlOff")); return;
         }
-        if (this.ctrl && !label.startsWith("Ctrl+")) this.sendControl(label);
+        if (this.ctrl && !label.startsWith("Ctrl+") && !label.startsWith("Alt+")) this.sendControl(label);
         else { this.sender.key(mobileKey(label)); this.clearCtrl(); }
       };
       button.addEventListener("pointerdown", e => {
