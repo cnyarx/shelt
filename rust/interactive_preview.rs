@@ -56,7 +56,7 @@ pub async fn create(
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return unavailable();
     };
-    if read_file(&state, &grant, name).is_none() {
+    if !matches!(read_file(&state, &grant, name), ReadOutcome::Ready(_, _)) {
         return unavailable();
     }
     let mut random = [0u8; 32];
@@ -122,8 +122,10 @@ pub async fn content(
         state.interactive_previews.0.lock().unwrap().remove(&token);
         return unavailable();
     }
-    let Some((bytes, content_type)) = read_file(&state, &grant, &resource) else {
-        return unavailable();
+    let (bytes, content_type) = match read_file(&state, &grant, &resource) {
+        ReadOutcome::Ready(bytes, content_type) => (bytes, content_type),
+        ReadOutcome::TooLarge => return too_large(),
+        ReadOutcome::Unavailable => return unavailable(),
     };
     let mut response = bytes.into_response();
     let headers = response.headers_mut();
@@ -158,35 +160,58 @@ fn unavailable() -> Response {
     response
 }
 
-fn read_file(state: &AppState, grant: &Grant, resource: &str) -> Option<(Vec<u8>, &'static str)> {
+fn too_large() -> Response {
+    let mut response =
+        secure((StatusCode::PAYLOAD_TOO_LARGE, "预览资源超出大小限制").into_response());
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+enum ReadOutcome {
+    Ready(Vec<u8>, &'static str),
+    TooLarge,
+    Unavailable,
+}
+
+fn read_file(state: &AppState, grant: &Grant, resource: &str) -> ReadOutcome {
     if resource.is_empty()
         || Path::new(resource).is_absolute()
         || resource.contains(['\\', '\0'])
         || resource.split('/').any(|part| part.starts_with('.'))
     {
-        return None;
+        return ReadOutcome::Unavailable;
     }
-    let canonical = fs::canonicalize(grant.directory.join(resource)).ok()?;
-    let private_directory = fs::canonicalize(state_dir()).ok()?;
+    let Ok(canonical) = fs::canonicalize(grant.directory.join(resource)) else {
+        return ReadOutcome::Unavailable;
+    };
+    let Ok(private_directory) = fs::canonicalize(state_dir()) else {
+        return ReadOutcome::Unavailable;
+    };
     if !canonical.starts_with(&grant.directory)
         || !within_preview_root(&canonical, &state.preview_roots)
         || canonical.starts_with(private_directory)
         || canonical
             .strip_prefix(&grant.directory)
-            .ok()?
-            .components()
-            .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
+            .map(|rest| {
+                rest.components()
+                    .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
+            })
+            .unwrap_or(true)
     {
-        return None;
+        return ReadOutcome::Unavailable;
     }
     let (content_type, max_bytes) = if let Some(kind) = preview_type(&canonical) {
         if kind.kind == "markdown" {
-            return None;
+            return ReadOutcome::Unavailable;
         }
-        (kind.content_type, kind.max_bytes)
+        (kind.content_type, Some(kind.max_bytes))
     } else {
-        let extension = canonical.extension()?.to_str()?.to_ascii_lowercase();
-        let content_type = match extension.as_str() {
+        let Some(extension) = canonical.extension().and_then(|ext| ext.to_str()) else {
+            return ReadOutcome::Unavailable;
+        };
+        let content_type = match extension.to_ascii_lowercase().as_str() {
             "js" | "mjs" => "text/javascript; charset=utf-8",
             "css" => "text/css; charset=utf-8",
             "json" => "application/json",
@@ -205,24 +230,37 @@ fn read_file(state: &AppState, grant: &Grant, resource: &str) -> Option<(Vec<u8>
             "ogg" => "audio/ogg",
             "mp4" => "video/mp4",
             "webm" => "video/webm",
-            _ => return None,
+            _ => return ReadOutcome::Unavailable,
         };
-        let max_bytes = if content_type.starts_with("text/") || content_type == "application/json" {
-            MAX_DOCUMENT_BYTES
+        let max_bytes = if content_type.starts_with("text/javascript") {
+            None
+        } else if content_type.starts_with("text/") || content_type == "application/json" {
+            Some(MAX_DOCUMENT_BYTES)
         } else {
-            MAX_PREVIEW_IMAGE_BYTES
+            Some(MAX_PREVIEW_IMAGE_BYTES)
         };
         (content_type, max_bytes)
     };
-    let mut file = fs::File::open(canonical).ok()?;
-    let metadata = file.metadata().ok()?;
-    if !metadata.is_file() || metadata.len() > max_bytes {
-        return None;
+    let Ok(mut file) = fs::File::open(&canonical) else {
+        return ReadOutcome::Unavailable;
+    };
+    let Ok(metadata) = file.metadata() else {
+        return ReadOutcome::Unavailable;
+    };
+    if !metadata.is_file() {
+        return ReadOutcome::Unavailable;
     }
+    if max_bytes.is_some_and(|max| metadata.len() > max) {
+        return ReadOutcome::TooLarge;
+    }
+    let limit = max_bytes.unwrap_or(metadata.len());
     let mut bytes = Vec::new();
-    (&mut file)
-        .take(max_bytes + 1)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    (bytes.len() as u64 <= max_bytes).then_some((bytes, content_type))
+    if (&mut file).take(limit + 1).read_to_end(&mut bytes).is_err() {
+        return ReadOutcome::Unavailable;
+    }
+    if max_bytes.is_some_and(|max| bytes.len() as u64 > max) {
+        return ReadOutcome::TooLarge;
+    }
+    bytes.truncate(limit as usize);
+    ReadOutcome::Ready(bytes, content_type)
 }

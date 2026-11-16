@@ -30,7 +30,8 @@ export class InteractivePreviews {
       if (previewType(canonical)?.kind !== "html" || !withinPreviewRoot(canonical, this.roots)) return null;
       const directory = dirname(canonical);
       const grant = { directory, session, expires: Date.now() + 24 * 60 * 60 * 1000 };
-      if (!(await this.readFile(grant, basename(canonical)))) return null;
+      const entry = await this.readFile(grant, basename(canonical));
+      if (!entry || entry === "too-large") return null;
       for (const [key, entry] of this.grants) if (!this.valid(entry)) this.grants.delete(key);
       const token = randomBytes(32).toString("hex");
       this.grants.set(token, grant);
@@ -43,7 +44,7 @@ export class InteractivePreviews {
     return this.grants.delete(token);
   }
 
-  async read(token: string, resource: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null> {
+  async read(token: string, resource: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | "too-large" | null> {
     const grant = this.grants.get(token);
     if (!grant || !this.valid(grant)) { this.grants.delete(token); return null; }
     return this.readFile(grant, resource);
@@ -53,7 +54,7 @@ export class InteractivePreviews {
     return grant.expires > Date.now() && this.auth.authenticated(`${SESSION_COOKIE}=${grant.session}`);
   }
 
-  private async readFile(grant: Grant, resource: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null> {
+  private async readFile(grant: Grant, resource: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | "too-large" | null> {
     if (!resource || isAbsolute(resource) || resource.includes("\\") || resource.includes("\0") || resource.split("/").some(part => part.startsWith("."))) return null;
     try {
       const canonical = await realpath(join(grant.directory, resource));
@@ -62,19 +63,22 @@ export class InteractivePreviews {
       const kind = previewType(canonical);
       const contentType = kind?.contentType ?? ASSET_TYPES[extname(canonical).toLowerCase()];
       if (!contentType || kind?.kind === "markdown") return null;
-      const maxBytes = kind?.maxBytes ?? (contentType.startsWith("text/") || contentType === "application/json" ? MAX_DOCUMENT_BYTES : MAX_PREVIEW_IMAGE_BYTES);
+      const maxBytes = contentType.startsWith("text/javascript") ? null : (kind?.maxBytes ?? (contentType.startsWith("text/") || contentType === "application/json" ? MAX_DOCUMENT_BYTES : MAX_PREVIEW_IMAGE_BYTES));
       const file = await open(canonical, "r");
       try {
         const metadata = await file.stat();
-        if (!metadata.isFile() || metadata.size > maxBytes) return null;
-        const bytes = Buffer.alloc(maxBytes + 1);
+        if (!metadata.isFile()) return null;
+        if (maxBytes !== null && metadata.size > maxBytes) return "too-large";
+        const limit = maxBytes ?? metadata.size;
+        const bytes = Buffer.alloc(limit + 1);
         let length = 0;
         while (length < bytes.length) {
           const result = await file.read(bytes, length, bytes.length - length, null);
           if (!result.bytesRead) break;
           length += result.bytesRead;
         }
-        return length <= maxBytes ? { bytes: bytes.subarray(0, length), contentType } : null;
+        if (maxBytes !== null && length > maxBytes) return "too-large";
+        return { bytes: bytes.subarray(0, Math.min(length, limit)), contentType };
       } finally { await file.close(); }
     } catch { return null; }
   }

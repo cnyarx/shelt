@@ -372,6 +372,7 @@ const server = Bun.serve<SessionData>({
       let resource: string;
       try { resource = decodeURIComponent(previewResource[2]!); } catch { return response("Invalid resource path", 400); }
       const result = await interactivePreviews.read(previewResource[1]!, resource);
+      if (result === "too-large") return response("预览资源超出大小限制", 413, { "Cache-Control": "no-store" });
       if (!result) return response("预览资源不可用，请刷新预览页", 404, { "Cache-Control": "no-store" });
       return response(result.bytes, 200, {
         "Content-Type": result.contentType, "Cache-Control": "no-store", "Content-Disposition": "inline",

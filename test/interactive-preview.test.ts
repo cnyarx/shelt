@@ -68,6 +68,13 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
       const head = await fetch(resourceBase + "assets/app.js", { method: "HEAD" });
       expect(head.status).toBe(200);
       expect(await head.text()).toBe("");
+      const bigScript = "x".repeat(6 * 1024 * 1024);
+      await writeFile(join(directory, "assets/big.js"), bigScript);
+      const big = await fetch(resourceBase + "assets/big.js", { headers: { Origin: "null" } });
+      expect(big.status).toBe(200);
+      expect(await big.text()).toBe(bigScript);
+      await writeFile(join(directory, "assets/big.json"), JSON.stringify({ pad: "y".repeat(6 * 1024 * 1024) }));
+      expect((await fetch(resourceBase + "assets/big.json", { headers: { Origin: "null" } })).status).toBe(413);
       for (const path of [".private/secret.json", "alias.json", "outside.txt", "state/auth.json", "private.md", "assets/", "%2e%2e%2foutside.txt", "assets%5capp.js", "missing.js"]) {
         expect((await fetch(resourceBase + path)).status).toBe(404);
       }
