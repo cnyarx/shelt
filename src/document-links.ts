@@ -1,10 +1,11 @@
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 
 const EXTENSIONS = "(?:md|markdown|html?|svg|png|jpe?g|gif|webp)";
+const QUERY_SUFFIX = "(?:\\?[A-Za-z0-9_%.=&+-]+)?";
 const PATH_START = "(?:/(?!/)|\\.{1,2}/|[^\\s/\"'\\x60:=\\uff1a\\uff0c\\u3001\\u2500-\\u257f()\\[\\]{}]+/)";
-const QUOTED_PATH = new RegExp(`(["'\\x60])(${PATH_START}(?:\\\\.|(?!\\1)[^\\\\\\r\\n\\u2028\\u2029])+?\\.${EXTENSIONS})(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?\\1`, "giu");
-const BARE_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001\\u2500-\\u257f])(${PATH_START}(?:\\\\.|[^\\\\\\s"'\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)`, "giu");
-const SPACED_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?!/)(?:\\\\.|[^\\\\"\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?)$`, "giu");
+const QUOTED_PATH = new RegExp(`(["'\\x60])(${PATH_START}(?:\\\\.|(?!\\1)[^\\\\\\r\\n\\u2028\\u2029])+?\\.${EXTENSIONS})(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?(${QUERY_SUFFIX})\\1`, "giu");
+const BARE_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001\\u2500-\\u257f])(${PATH_START}(?:\\\\.|[^\\\\\\s"'\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?${QUERY_SUFFIX})`, "giu");
+const SPACED_PATH = new RegExp(`(^|[\\s(\\[{=:\\uff1a\\uff0c\\u3001])(/(?!/)(?:\\\\.|[^\\\\"\\x60])+?\\.${EXTENSIONS}(?::\\d+(?::\\d+)?|#L\\d+(?:C\\d+)?)?${QUERY_SUFFIX})$`, "giu");
 const LOCATION_SUFFIX = /(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/i;
 
 let documentLinkCache = new WeakMap<Terminal, Map<number, ILink[]>>();
@@ -14,15 +15,17 @@ export function invalidateDocumentLinkCache(terminal?: Terminal): void {
   else documentLinkCache = new WeakMap();
 }
 
-export type DocumentPathMatch = { path: string; start: number; end: number };
+export type DocumentPathMatch = { path: string; start: number; end: number; query?: string };
 export type DocumentMouseTarget = Pick<MouseEvent, "button" | "clientX" | "clientY" | "preventDefault" | "stopImmediatePropagation">;
 
 export function findDocumentPaths(line: string): DocumentPathMatch[] {
   const matches: DocumentPathMatch[] = [];
   for (const match of line.matchAll(QUOTED_PATH)) {
     const raw = match[2]!;
-    const path = unescapeShellPath(raw);
-    matches.push({ path, start: match.index + 1, end: match.index + 1 + raw.length });
+    const queryRaw = match[3] ?? "";
+    const query = queryRaw.slice(1);
+    if (query.includes("://")) continue;
+    matches.push({ path: unescapeShellPath(raw), start: match.index + 1, end: match.index + 1 + raw.length + queryRaw.length, ...(query ? { query } : {}) });
   }
   for (const match of line.matchAll(BARE_PATH)) {
     addBareMatch(matches, match);
@@ -42,18 +45,29 @@ function addBareMatch(matches: DocumentPathMatch[], match: RegExpMatchArray): vo
   let tokenStart = start;
   while (tokenStart > 0 && !/[\s"'`()[\]{}]/u.test(input[tokenStart - 1]!)) tokenStart--;
   if (input.slice(tokenStart, start).includes("://")) return;
-  const withoutLocation = raw.replace(LOCATION_SUFFIX, "");
-  if (withoutLocation.includes("://")) return;
+  const split = splitQuery(raw);
+  const withoutLocation = split.file.replace(LOCATION_SUFFIX, "");
+  if (withoutLocation.includes("://") || split.query.includes("://")) return;
+  let tokenEnd = start + raw.length;
+  while (tokenEnd < input.length && !/[\s"'`()[\]{}]/u.test(input[tokenEnd]!)) tokenEnd++;
+  if (input.slice(start, tokenEnd).includes("://")) return;
   matches.push({
     path: unescapeShellPath(withoutLocation),
     start,
-    end: start + withoutLocation.length,
+    end: start + (split.query ? raw.length : withoutLocation.length),
+    ...(split.query ? { query: split.query } : {}),
   });
 }
 
+function splitQuery(raw: string): { file: string; query: string } {
+  const index = raw.indexOf("?");
+  return index === -1 ? { file: raw, query: "" } : { file: raw.slice(0, index), query: raw.slice(index + 1) };
+}
+
 export function previewUrl(path: string): string {
-  const endpoint = path.startsWith("/") ? "/preview" : "/api/resolve-terminal-path";
-  return `${endpoint}?path=${encodeURIComponent(path)}`;
+  const split = splitQuery(path);
+  const endpoint = split.file.startsWith("/") ? "/preview" : "/api/resolve-terminal-path";
+  return `${endpoint}?path=${encodeURIComponent(split.file)}${split.query ? `&q=${encodeURIComponent(split.query)}` : ""}`;
 }
 
 function unescapeShellPath(path: string): string {
@@ -115,7 +129,7 @@ function documentLinksForLine(terminal: Terminal, bufferLineNumber: number): ILi
         start: { x: first.cell + 1, y: first.line },
         end: { x: last.cell + 1, y: last.line },
       },
-      text: match.path,
+      text: match.query ? `${match.path}?${match.query}` : match.path,
       activate: () => undefined,
     }];
   });

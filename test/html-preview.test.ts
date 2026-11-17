@@ -36,7 +36,7 @@ function setup(preference: string | null = null) {
   return {
     mount, calls, spoken, storage, documents,
     language: (value: string) => context.setLanguage(value),
-    start: () => context.mountHtmlPreview(mount, "/page.html", "/api/preview?path=%2Fpage.html", context.tts, (...args: any[]) => documents.push(args)),
+    start: (query = "") => context.mountHtmlPreview(mount, "/page.html", "/api/preview?path=%2Fpage.html", context.tts, (...args: any[]) => documents.push(args), query),
     event: (name: string, event: unknown = {}) => handlers.get(name)?.(event),
     change: (value: string) => { storage.set("shelt-html-interactive", value); handlers.get("storage")?.({ key: "shelt-html-interactive" }); },
     defer: () => { defer = true; }, complete: () => complete!(),
@@ -78,6 +78,17 @@ test("HTML preview remembers static mode without creating a resource grant", asy
   await ui.start();
   expect(ui.calls).toEqual([]);
   expect(ui.mount.children[0].sandbox.value).toBe("allow-same-origin");
+});
+
+test("interactive preview carries the terminal query into the resource iframe", async () => {
+  const ui = setup();
+  await ui.start("line=mb");
+  expect(ui.mount.children[0].sandbox.value).toBe("allow-scripts");
+  expect(ui.mount.children[0].src).toBe("/api/preview-content/1/page.html?line=mb");
+  ui.change("false");
+  await flush();
+  expect(ui.mount.children[0].sandbox.value).toBe("allow-same-origin");
+  expect(ui.mount.children[0].src).toBe("/api/preview?path=%2Fpage.html");
 });
 
 test("annotation switches only this preview to static without relaxing the sandbox", async () => {

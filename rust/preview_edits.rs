@@ -373,10 +373,20 @@ pub async fn open_handler(
     if preview_type(&path).is_none() || !fs::metadata(&path).is_ok_and(|m| m.is_file()) {
         return error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "invalid_path");
     }
+    let q = query.get("q").map(String::as_str).filter(|q| !q.is_empty());
+    if let Some(q) = q {
+        if !valid_preview_query(q) {
+            return error(StatusCode::BAD_REQUEST, "invalid_query");
+        }
+    }
     let mut location = format!(
         "/preview?path={}",
         percent_encode(path.to_string_lossy().as_bytes())
     );
+    if let Some(q) = q {
+        location.push_str("&q=");
+        location.push_str(&percent_encode(q.as_bytes()));
+    }
     if let Some(source) = source {
         location.push_str("&source=");
         location.push_str(&percent_encode(

@@ -24,6 +24,7 @@ const shareKey = location.pathname.match(/^\/share\/([a-f0-9]{64})$/)?.[1];
 const tts = shareKey ? null : new PreviewTtsController();
 if (shareKey) requiredElement("tts-toolbar").hidden = true;
 const path = shareKey ? `share:${shareKey}` : new URL(location.href).searchParams.get("path");
+const previewQuery = shareKey ? "" : (new URL(location.href).searchParams.get("q") ?? "");
 const updateTitle = () => { document.title = `${shareKey ? t("sharedDocument") : path?.split("/").pop() || t("preview")} — Shelt`; };
 onLanguageChange(() => { updateTitle(); if (message) mount.textContent = message(); });
 updateTitle();
@@ -94,7 +95,7 @@ async function load(path: string): Promise<void> {
     mount.className = "native-preview";
     if (kind === "html" && !shareKey) {
       const edits = new PreviewEditController(path, "html", source);
-      await mountHtmlPreview(mount, path, apiUrl, tts, (root, switchToStatic) => edits.setDocument(root, switchToStatic));
+      await mountHtmlPreview(mount, path, apiUrl, tts, (root, switchToStatic) => edits.setDocument(root, switchToStatic), previewQuery);
       return;
     }
     const frame = document.createElement("iframe");

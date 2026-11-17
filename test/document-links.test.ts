@@ -37,6 +37,23 @@ describe("terminal document links", () => {
     expect(findDocumentPaths("see /tmp/diagram.SVG#L8C2")[0]?.path).toBe("/tmp/diagram.SVG");
   });
 
+  test("carries query suffixes into preview urls without touching plain paths", () => {
+    const report = "/home/admin/main-agent/handoffs/REPORT_SHELL.html?line=mb";
+    expect(findDocumentPaths(`open ${report} now`)).toEqual([
+      { path: "/home/admin/main-agent/handoffs/REPORT_SHELL.html", query: "line=mb", start: 5, end: 5 + report.length },
+    ]);
+    expect(findDocumentPaths("'/tmp/report.html?line=cr&x=1'")[0]).toEqual({
+      path: "/tmp/report.html", query: "line=cr&x=1", start: 1, end: 1 + "/tmp/report.html?line=cr&x=1".length,
+    });
+    expect(findDocumentPaths("see /tmp/a.md?")).toEqual([
+      { path: "/tmp/a.md", start: 4, end: 13 },
+    ]);
+    expect(findDocumentPaths("/tmp/a.html?url=http://x/y")).toEqual([]);
+    expect(previewUrl(report)).toBe("/preview?path=%2Fhome%2Fadmin%2Fmain-agent%2Fhandoffs%2FREPORT_SHELL.html&q=line%3Dmb");
+    expect(previewUrl("handoffs/a.html?line=mb")).toBe("/api/resolve-terminal-path?path=handoffs%2Fa.html&q=line%3Dmb");
+    expect(previewUrl("/tmp/a.md")).toBe("/preview?path=%2Ftmp%2Fa.md");
+  });
+
   test("supports quoted, escaped-space, unquoted Agent output, and Unicode paths", () => {
     expect(findDocumentPaths("'/home/user/设计 文档/架构.md'")[0]).toEqual({
       path: "/home/user/设计 文档/架构.md",

@@ -253,10 +253,11 @@ async function focusedPaneCwd(): Promise<string | null> {
   }
 }
 
-async function resolveTerminalPath(path: string | null): Promise<Response> {
+async function resolveTerminalPath(path: string | null, previewQuery: string | null): Promise<Response> {
   if (!path || isAbsolute(path) || path.includes("\0") || !previewType(path)) {
     return response("Supported relative path required", 400);
   }
+  if (previewQuery && !/^[A-Za-z0-9_%.=&+-]+$/.test(previewQuery)) return response("Invalid preview query", 400);
   const cwd = await focusedPaneCwd();
   if (!cwd) return response("Unable to query the focused Herdr pane", 503);
 
@@ -276,6 +277,7 @@ async function resolveTerminalPath(path: string | null): Promise<Response> {
     return response("Not found", 404);
   }
   const query = new URLSearchParams({ path: canonicalTarget });
+  if (previewQuery) query.set("q", previewQuery);
   return response(null, 302, { Location: `/preview?${query.toString()}`, "Cache-Control": "no-store" });
 }
 
@@ -453,7 +455,10 @@ const server = Bun.serve<SessionData>({
           const canonical = await realpath(isAbsolute(path) ? path : join(source.cwd!, path));
           if (!withinPreviewRoot(canonical, canonicalPreviewRoots)) return response("Path is outside preview roots", 403);
           if (!previewType(canonical) || !(await stat(canonical)).isFile()) return response("Invalid preview target", 415);
+          const previewQuery = url.searchParams.get("q");
+          if (previewQuery && !/^[A-Za-z0-9_%.=&+-]+$/.test(previewQuery)) return response("Invalid preview query", 400);
           const query = new URLSearchParams({ path: canonical });
+          if (previewQuery) query.set("q", previewQuery);
           if (source.agent) query.set("source", JSON.stringify({ targetId: source.agent.targetId, paneId: source.agent.paneId, session: source.agent.session }));
           return response(null, 302, { Location: `/preview?${query}`, "Cache-Control": "no-store" });
         } catch { return response("Not found", 404); }
@@ -641,7 +646,7 @@ const server = Bun.serve<SessionData>({
 
     if (url.pathname === "/api/resolve-terminal-path" && req.method === "GET") {
       if (!authenticated(req)) return response("Authentication required", 401);
-      return resolveTerminalPath(url.searchParams.get("path"));
+      return resolveTerminalPath(url.searchParams.get("path"), url.searchParams.get("q"));
     }
 
     if (url.pathname === "/api/resolve-wikilink" && req.method === "GET") {

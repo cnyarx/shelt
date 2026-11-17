@@ -74,6 +74,17 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] as const : [
       const source = sourceOf(await openPreview());
       expect(source).toEqual({ targetId: "local", paneId: local.paneId, session: local.session });
       expect(sourceOf(await openPreview("document.md"))).toEqual(source);
+      const withQuery = await fetch(`${env.base}/api/preview-edits/open?path=${encodeURIComponent(env.path)}&q=line%3Dmb`, { headers: { cookie: env.cookie(), Origin: env.base }, redirect: "manual" });
+      expect(withQuery.status).toBe(302);
+      expect(new URL(withQuery.headers.get("location")!, env.base).searchParams.get("q")).toBe("line=mb");
+      expect((await fetch(`${env.base}/api/preview-edits/open?path=${encodeURIComponent(env.path)}&q=line%3Dmb%20evil`, { headers: { cookie: env.cookie(), Origin: env.base }, redirect: "manual" })).status).toBe(400);
+      const resolved = await fetch(`${env.base}/api/resolve-terminal-path?path=document.md&q=line%3Dmb`, { headers: { cookie: env.cookie(), Origin: env.base }, redirect: "manual" });
+      expect(resolved.status).toBe(302);
+      const resolvedUrl = new URL(resolved.headers.get("location")!, env.base);
+      expect(resolvedUrl.pathname).toBe("/preview");
+      expect(resolvedUrl.searchParams.get("path")).toBe(env.path);
+      expect(resolvedUrl.searchParams.get("q")).toBe("line=mb");
+      expect((await fetch(`${env.base}/api/resolve-terminal-path?path=document.md&q=a%20b`, { headers: { cookie: env.cookie(), Origin: env.base }, redirect: "manual" })).status).toBe(400);
       await env.setControl({ focusedPane: "another-pane" });
       expect(sourceOf(await openPreview())).toBeNull();
       expect(source.session).toBe(local.session);

@@ -198,6 +198,8 @@ fn escape_tts_text(text: &str) -> String {
 #[derive(Deserialize)]
 struct PreviewQuery {
     path: String,
+    #[serde(default)]
+    q: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1126,7 +1128,13 @@ async fn resolve_terminal_path_handler(
             (StatusCode::UNSUPPORTED_MEDIA_TYPE, "Invalid preview target").into_response(),
         );
     }
-    redirect_to_preview(&target)
+    let q = query.q.as_deref().filter(|q| !q.is_empty());
+    if let Some(q) = q {
+        if !valid_preview_query(q) {
+            return secure((StatusCode::BAD_REQUEST, "Invalid preview query").into_response());
+        }
+    }
+    redirect_to_preview(&target, q)
 }
 
 async fn focused_pane_cwd(launch: &LaunchTarget) -> Result<PathBuf, &'static str> {
@@ -1166,11 +1174,22 @@ fn parse_herdr_pane_cwd(output: &[u8]) -> Result<PathBuf, &'static str> {
         .unwrap_or(response.result.pane.cwd))
 }
 
-fn redirect_to_preview(path: &Path) -> Response {
-    let location = format!(
+pub fn valid_preview_query(q: &str) -> bool {
+    !q.is_empty()
+        && q.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'_' | b'%' | b'.' | b'=' | b'&' | b'+' | b'-')
+        })
+}
+
+fn redirect_to_preview(path: &Path, q: Option<&str>) -> Response {
+    let mut location = format!(
         "/preview?path={}",
         percent_encode(path.to_string_lossy().as_bytes())
     );
+    if let Some(q) = q {
+        location.push_str("&q=");
+        location.push_str(&percent_encode(q.as_bytes()));
+    }
     let mut response = StatusCode::FOUND.into_response();
     response.headers_mut().insert(
         header::LOCATION,

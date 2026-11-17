@@ -17,5 +17,6 @@ test("only same-origin preview links use the click-time source capture endpoint"
   const origin = "http://localhost:8790";
   expect(terminalPreviewUrl("/preview?path=%2Fmy%20doc.md#section", origin)).toBe("/api/preview-edits/open?path=%2Fmy%20doc.md#section");
   expect(terminalPreviewUrl("/api/resolve-terminal-path?path=docs%2Freadme.md", origin)).toBe("/api/preview-edits/open?path=docs%2Freadme.md");
+  expect(terminalPreviewUrl("/preview?path=%2Fx.html&q=line%3Dmb", origin)).toBe("/api/preview-edits/open?path=%2Fx.html&q=line%3Dmb");
   for (const value of ["https://example.com/preview?path=/x.md", "/share/abcd", "/api/preview?path=/x.md", "/preview"]) expect(terminalPreviewUrl(value, origin)).toBeNull();
 });

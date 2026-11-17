@@ -2,7 +2,7 @@ import { HTML_INTERACTIVE_KEY, htmlInteractiveEnabled } from "./preview-preferen
 import type { PreviewTtsController } from "./tts.ts";
 import { onLanguageChange, t, type MessageKey } from "./i18n.ts";
 
-export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl: string, tts: PreviewTtsController | null, onDocument?: (root: Document | null, switchToStatic?: () => Promise<void>) => void): Promise<void> {
+export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl: string, tts: PreviewTtsController | null, onDocument?: (root: Document | null, switchToStatic?: () => Promise<void>) => void, query = ""): Promise<void> {
   let staticOverride = false;
   let generation = 0;
   let grant: string | null = null;
@@ -32,7 +32,7 @@ export async function mountHtmlPreview(mount: HTMLElement, path: string, apiUrl:
       const created = await response.json() as { token: string; url: string };
       if (current !== generation) { await revoke(created.token); return; }
       grant = created.token;
-      url = created.url;
+      url = created.url + (query ? `?${query}` : "");
     }
     if (current !== generation) return;
     const frame = document.createElement("iframe");

@@ -24,6 +24,7 @@ export function terminalPreviewUrl(value: string, origin: string): string | null
   try {
     const url = new URL(value, origin);
     if (url.origin !== origin || !["/preview", "/api/resolve-terminal-path"].includes(url.pathname) || !url.searchParams.get("path")) return null;
-    return `/api/preview-edits/open?path=${encodeURIComponent(url.searchParams.get("path")!)}${url.hash}`;
+    const q = url.searchParams.get("q");
+    return `/api/preview-edits/open?path=${encodeURIComponent(url.searchParams.get("path")!)}${q ? `&q=${encodeURIComponent(q)}` : ""}${url.hash}`;
   } catch { return null; }
 }
