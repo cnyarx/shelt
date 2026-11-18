@@ -23,7 +23,7 @@ const NATIVE_EVENTS: &[&str] = &[
     "pane.agent_detected",
     "layout.updated",
 ];
-fn valid_pane(value: &str) -> bool {
+pub fn valid_pane(value: &str) -> bool {
     (1..=128).contains(&value.len())
         && value.as_bytes()[0].is_ascii_alphanumeric()
         && value
@@ -69,6 +69,36 @@ fn native_request(raw: &str) -> Option<String> {
                 return None;
             }
             json!({"pane_id": pane, "mode": mode})
+        }
+        "pane.send_input" => {
+            let pane = params["pane_id"].as_str()?;
+            let text = params["text"].as_str()?;
+            if !valid_pane(pane) || text.len() > 4000 || text.contains(['\0', '\r']) {
+                return None;
+            }
+            let keys = params["keys"].as_array()?;
+            if keys.len() > 4 || keys.iter().any(|key| key.as_str() != Some("Enter")) {
+                return None;
+            }
+            json!({"pane_id": pane, "text": text, "keys": keys})
+        }
+        "pane.read" => {
+            let pane = params["pane_id"].as_str()?;
+            if !valid_pane(pane)
+                || params["source"].as_str() != Some("visible")
+                || params["format"].as_str() != Some("text")
+            {
+                return None;
+            }
+            let mut body = json!({"pane_id": pane, "source": "visible", "format": "text", "strip_ansi": params["strip_ansi"].as_bool().unwrap_or(true)});
+            if !params["lines"].is_null() {
+                let lines = params["lines"].as_u64()?;
+                if !(1..=2000).contains(&lines) {
+                    return None;
+                }
+                body["lines"] = json!(lines);
+            }
+            body
         }
         "events.subscribe" => {
             let items = params["subscriptions"].as_array()?;
@@ -194,6 +224,30 @@ async fn native_line(
                 .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData));
         }
     }
+}
+
+pub async fn native_once(
+    target: Option<&targets::HerdrTarget>,
+    method: &str,
+    params: Value,
+) -> Option<Value> {
+    let request = format!(
+        "{}\n",
+        json!({"id": format!("srv:{method}"), "method": method, "params": params})
+    );
+    let mut connection = native_connect(target, &request).await.ok()?;
+    let line = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        native_line(&mut connection.reader),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    let value: Value = serde_json::from_str(&line).ok()?;
+    if value.get("error").is_some() {
+        return None;
+    }
+    Some(value.get("result").cloned().unwrap_or(Value::Null))
 }
 
 pub async fn handler(

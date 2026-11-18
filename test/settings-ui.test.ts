@@ -28,6 +28,7 @@ function fakeElement(tag = "div"): any {
     title: "",
     type: "",
     attributes: {} as Record<string, string>,
+    dataset: {} as Record<string, string>,
     handlers: {} as Record<string, Function[]>,
     addEventListener(name: string, handler: Function) { (this.handlers[name] ??= []).push(handler); },
     setAttribute(name: string, value: string) { this.attributes[name] = value; },
@@ -47,6 +48,7 @@ const IDS = [
   "settings-status", "settings-version", "password-form", "current-password", "new-password", "confirm-new-password", "password-submit", "html-interactive",
   "notify-done", "notify-blocked",
   "ui-language", "target-add", "password-toggle", "password-cancel",
+  "settings-agents", "agent-model", "agent-effort", "agent-config-list", "agent-config-results", "agent-config-apply", "agent-config-refresh",
 ];
 
 function flush(times = 6) {
@@ -104,6 +106,7 @@ test("settings panel manages targets, switches connection and changes password",
       const body = init.body ? JSON.parse(init.body) : undefined;
       calls.push({ url, method, body });
       if (url === "/api/herdr/targets" && method === "GET") return ok({ ...state, targets: [...state.targets] });
+      if (url === "/api/agent-config/options" && method === "GET") return ok({ models: [], defaultModel: "", efforts: ["low", "medium", "high", "xhigh", "max"], agents: [] });
       if (url === "/api/version" && method === "GET") return ok({ version: "开发版", commit: "464f2c5", dirty: true });
       if (url === "/api/herdr/targets" && method === "POST") {
         const entry = { id: "ef015678", ...body };

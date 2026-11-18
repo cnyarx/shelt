@@ -5,6 +5,8 @@ import type { NativeSnapshot } from "../../src/mobile-model.ts";
 export async function mobileNative(directory: string) {
   const apiClients = new Set<Socket>(), subscribers = new Set<Socket>(), terminals = new Set<Socket>();
   const calls: { method: string; params: any }[] = [], input: string[] = [];
+  const screens = new Map<string, string>();
+  const sends: { pane_id: string; text: string; keys: string[] }[] = [];
   let terminalStarts = 0;
   let snapshot: NativeSnapshot = {
     focused_pane_id: "w1:p1",
@@ -47,6 +49,17 @@ export async function mobileNative(directory: string) {
             focus(pane); result = { type: "pane_info", pane_id: pane }; break;
           }
           case "pane.zoom": result = { type: "pane_zoom" }; event("layout.updated"); break;
+          case "pane.read": {
+            const pane = request.params.pane_id;
+            if (!snapshot.agents.some(a => a.pane_id === pane)) { socket.end(JSON.stringify({ id: request.id, error: { code: "pane_not_found", message: "No such pane" } }) + "\n"); return; }
+            result = { type: "pane_read", pane_id: pane, text: screens.get(pane) ?? "" }; break;
+          }
+          case "pane.send_input": {
+            const pane = request.params.pane_id;
+            if (!snapshot.agents.some(a => a.pane_id === pane)) { socket.end(JSON.stringify({ id: request.id, error: { code: "pane_not_found", message: "No such pane" } }) + "\n"); return; }
+            sends.push({ pane_id: pane, text: request.params.text ?? "", keys: request.params.keys ?? [] });
+            result = {}; break;
+          }
           default: throw new Error(`Unexpected native method ${request.method}`);
         }
         const reply = JSON.stringify({ id: request.id, result }) + "\n";
@@ -68,6 +81,7 @@ export async function mobileNative(directory: string) {
   ]);
   return {
     calls, input, focus, snapshot: () => snapshot, terminalStarts: () => terminalStarts, terminalCount: () => terminals.size,
+    sends, setScreen(pane: string, text: string) { screens.set(pane, text); },
     replace(value: NativeSnapshot) { snapshot = value; event("tab.moved"); },
     async close() {
       for (const socket of [...apiClients, ...terminals]) socket.destroy();

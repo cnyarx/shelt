@@ -70,6 +70,46 @@ export class NativeControlConnection {
   }
 }
 
+export function nativeOnce(launch: LaunchTarget, target: HerdrTarget | null, method: string, params: object, env = process.env): Promise<any> {
+  return new Promise(resolve => {
+    const line = JSON.stringify({ id: `srv:${method}`, method, params }) + "\n";
+    let done = false, buffer = "";
+    const decoder = new StringDecoder("utf8");
+    let release = () => {};
+    const finish = (value: any) => {
+      if (done) return;
+      done = true; clearTimeout(timer); release(); resolve(value);
+    };
+    const timer = setTimeout(() => finish(null), 8000);
+    const receive = (chunk: Buffer) => {
+      if (done) return;
+      buffer += decoder.write(chunk);
+      if (Buffer.byteLength(buffer) > 4 * 1024 * 1024) { finish(null); return; }
+      const end = buffer.indexOf("\n");
+      if (end < 0) return;
+      try {
+        const parsed = JSON.parse(buffer.slice(0, end));
+        finish(parsed && parsed.error ? null : (parsed?.result ?? null));
+      } catch { finish(null); }
+    };
+    if (target) {
+      const args = nativeBridgeCommand(launch, target);
+      const bridgeEnv = herdrPaneEnvironment(env); delete bridgeEnv.HERDR_ENV; delete bridgeEnv.HERDR_SOCKET_PATH;
+      const child = spawn(args[0]!, args.slice(1), { env: bridgeEnv, stdio: ["pipe", "pipe", "ignore"] });
+      release = () => { child.stdin.destroy(); child.stdout.destroy(); child.kill(); };
+      child.stdout.on("data", receive); child.stdout.on("end", () => finish(null)); child.stdout.on("error", () => finish(null));
+      child.stdin.on("error", () => finish(null)); child.on("error", () => finish(null)); child.on("exit", () => finish(null));
+      child.stdin.write(line);
+    } else {
+      const path = env.HERDR_SOCKET_PATH || join(env.HERDR_CONFIG_PATH ? dirname(env.HERDR_CONFIG_PATH) : join(env.XDG_CONFIG_HOME || join(env.HOME || ".", ".config"), "herdr"), "herdr.sock");
+      const socket = createConnection(path);
+      release = () => socket.destroy();
+      socket.on("connect", () => socket.write(line)); socket.on("data", receive);
+      socket.on("error", () => finish(null)); socket.on("end", () => finish(null)); socket.on("close", () => finish(null));
+    }
+  });
+}
+
 export function nativeBridgeCommand(launch: LaunchTarget, target: HerdrTarget | null): string[] {
   if (!target) return [launch.command, "remote-api-bridge"];
   const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -95,6 +135,16 @@ export function nativeRequest(raw: string): string | null {
     case "pane.zoom":
       if (typeof params.pane_id !== "string" || !validPane(params.pane_id) || !["toggle", "on", "off"].includes(params.mode)) return null;
       body = { pane_id: params.pane_id, mode: params.mode }; break;
+    case "pane.send_input": {
+      if (typeof params.pane_id !== "string" || !validPane(params.pane_id)) return null;
+      if (typeof params.text !== "string" || params.text.length > 4000 || /[\0\r]/.test(params.text)) return null;
+      if (!Array.isArray(params.keys) || params.keys.length > 4 || params.keys.some((key: unknown) => key !== "Enter")) return null;
+      body = { pane_id: params.pane_id, text: params.text, keys: params.keys }; break;
+    }
+    case "pane.read":
+      if (typeof params.pane_id !== "string" || !validPane(params.pane_id) || params.source !== "visible" || params.format !== "text") return null;
+      if (params.lines !== undefined && (!Number.isInteger(params.lines) || params.lines < 1 || params.lines > 2000)) return null;
+      body = { pane_id: params.pane_id, source: "visible", format: "text", strip_ansi: params.strip_ansi !== false, ...(params.lines === undefined ? {} : { lines: params.lines }) }; break;
     case "events.subscribe": {
       if (!Array.isArray(params.subscriptions) || params.subscriptions.length > 1024) return null;
       const subscriptions = [];

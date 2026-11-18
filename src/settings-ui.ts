@@ -116,6 +116,114 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
     return response.json();
   };
 
+  const agentSection = element("settings-agents");
+  const agentModel = element<HTMLSelectElement>("agent-model");
+  const agentEffort = element<HTMLSelectElement>("agent-effort");
+  const agentList = element("agent-config-list");
+  const agentResults = element("agent-config-results");
+  const agentApply = element<HTMLButtonElement>("agent-config-apply");
+  const agentRefresh = element<HTMLButtonElement>("agent-config-refresh");
+  type AgentRow = { paneId: string; title: string; status: string; input: string | null };
+  type AgentResult = { paneId: string; title: string; ok: boolean; reason: string };
+  let agentOptions: { models: string[]; defaultModel: string; efforts: string[]; agents: AgentRow[] } | null = null;
+  let agentResultRows: AgentResult[] = [];
+  let agentBusy = false;
+  const checkedPanes = new Set<string>();
+  const reasonText = (reason: string) => {
+    if (reason === "sent") return t("reasonSent");
+    if (reason === "agent_not_found") return t("reasonNotFound");
+    if (reason === "not_qwen") return t("reasonNotQwen");
+    if (reason === "send_failed") return t("reasonSendFailed");
+    if (reason.startsWith("status_")) return t("reasonStatus") + reason.slice(7);
+    return reason;
+  };
+  const fillSelect = (select: HTMLSelectElement, values: string[]) => {
+    const current = select.value;
+    select.replaceChildren();
+    const keep = document.createElement("option");
+    keep.value = "";
+    keep.textContent = t("agentNoChange");
+    select.append(keep);
+    for (const value of values) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.append(option);
+    }
+    select.value = values.includes(current) ? current : "";
+  };
+  const renderAgents = () => {
+    if (!agentOptions) return;
+    fillSelect(agentModel, agentOptions.models);
+    fillSelect(agentEffort, agentOptions.efforts);
+    agentList.replaceChildren();
+    if (!agentOptions.agents.length) {
+      const empty = document.createElement("li");
+      empty.className = "agent-config-empty";
+      empty.textContent = t("agentConfigNone");
+      agentList.append(empty);
+    }
+    for (const agent of agentOptions.agents) {
+      const item = document.createElement("li");
+      item.className = "agent-config-row";
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.dataset.pane = agent.paneId;
+      box.checked = checkedPanes.has(agent.paneId);
+      box.addEventListener("change", () => {
+        if (box.checked) checkedPanes.add(agent.paneId);
+        else checkedPanes.delete(agent.paneId);
+      });
+      const title = document.createElement("span");
+      title.className = "agent-config-title";
+      title.textContent = agent.title;
+      const state = document.createElement("span");
+      state.className = "agent-config-status";
+      state.textContent = agent.status;
+      const input = document.createElement("span");
+      input.className = "agent-config-input";
+      input.textContent = agent.input === null ? t("agentInputUnknown") : agent.input === "" ? t("agentInputEmpty") : agent.input;
+      label.append(box, title, state);
+      item.append(label, input);
+      agentList.append(item);
+    }
+    agentResults.replaceChildren();
+    for (const row of agentResultRows) {
+      const item = document.createElement("li");
+      item.className = `agent-config-result${row.ok ? " ok" : " skipped"}`;
+      item.textContent = `${row.title} — ${reasonText(row.reason)}`;
+      agentResults.append(item);
+    }
+  };
+  const loadAgents = async () => {
+    const loaded = await request("/api/agent-config/options", "GET") as NonNullable<typeof agentOptions>;
+    agentOptions = loaded;
+    checkedPanes.clear();
+    for (const agent of loaded.agents) {
+      if ((agent.status === "idle" || agent.status === "done") && agent.input === "") checkedPanes.add(agent.paneId);
+    }
+    renderAgents();
+  };
+  agentRefresh.addEventListener("click", () => { if (!agentBusy) void loadAgents().catch(showError); });
+  agentApply.addEventListener("click", () => {
+    if (agentBusy) return;
+    const panes = [...checkedPanes];
+    const model = agentModel.value;
+    const effort = agentEffort.value;
+    if (!panes.length || (!model && !effort)) { showStatus(() => t("agentSelectNothing")); return; }
+    agentBusy = true;
+    agentApply.disabled = true;
+    void request("/api/agent-config/apply", "POST", { panes, ...(model ? { model } : {}), ...(effort ? { effort } : {}) })
+      .then((result: { results: AgentResult[] }) => {
+        agentResultRows = result.results;
+        renderAgents();
+        showStatus(() => t("agentConfigDone"));
+      })
+      .catch(showError)
+      .finally(() => { agentBusy = false; agentApply.disabled = false; });
+  });
+
   const resetForm = () => {
     editing = null;
     form.reset();
@@ -153,6 +261,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
 
   const render = () => {
     herdrSection.hidden = state.mode !== "herdr";
+    agentSection.hidden = state.mode !== "herdr";
     list.replaceChildren();
     const rows: { id: string; name: string; detail: string; removable: boolean }[] = [
       { id: LOCAL_ID, name: t("localHerdr"), detail: t("defaultConnection"), removable: false },
@@ -230,9 +339,11 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   const refresh = async () => {
     state = await request("/api/herdr/targets", "GET") as TargetsResponse;
     render();
+    if (state.mode === "herdr") await loadAgents();
   };
   onLanguageChange(() => {
     render();
+    renderAgents();
     submit.textContent = t(editing ? "save" : "add");
     status.textContent = statusText();
     version.textContent = versionText();

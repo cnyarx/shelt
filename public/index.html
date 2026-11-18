@@ -143,6 +143,18 @@
         </label>
         <p id="notify-hint" class="settings-note" data-i18n="notifyHint">Herdr agent 任务完成或需要确认时发送系统通知。仅保存在此浏览器；需保持终端页面开启。</p>
       </section>
+      <section id="settings-agents" hidden>
+        <div class="settings-heading">
+          <h3 data-i18n="agentConfig">批量模型 / 思考等级</h3>
+          <button id="agent-config-refresh" type="button" class="ghost" data-i18n="agentRefresh">刷新</button>
+        </div>
+        <label class="settings-field"><span data-i18n="agentModel">模型</span><select id="agent-model"></select></label>
+        <label class="settings-field"><span data-i18n="agentEffort">思考等级</span><select id="agent-effort"></select></label>
+        <ul id="agent-config-list" class="agent-config-list"></ul>
+        <div class="settings-form-actions"><button id="agent-config-apply" type="button" data-i18n="agentApply">批量应用</button></div>
+        <p id="agent-config-hint" class="settings-note" data-i18n="agentConfigHint">选择后一键把 /model 与 /effort 命令发给勾选的 idle qwen 会话（会话内热切换，不重启、不丢上下文）。输入框非空或读不到的默认不勾，确认无草稿后再勾。</p>
+        <ul id="agent-config-results" class="agent-config-results"></ul>
+      </section>
       <section>
         <button id="password-toggle" class="settings-disclosure" type="button" aria-expanded="false" aria-controls="password-form"><span data-i18n="changePassword">修改密码</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></button>
         <form id="password-form" hidden>

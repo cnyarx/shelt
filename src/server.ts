@@ -25,6 +25,7 @@ import { validateEditDocument, type EditSubmission } from "./preview-edits.ts";
 import { TodoStore } from "./todo-store.ts";
 import { TodoHttp } from "./todo-http.ts";
 import { NativeControlConnection } from "./mobile-service.ts";
+import { agentConfigOptions, applyAgentConfig, validateAgentConfigRequest } from "./agent-config.ts";
 import {
   MAX_IMAGE_BYTES,
   allowedHost,
@@ -495,6 +496,23 @@ const server = Bun.serve<SessionData>({
         } catch { return json({ error: "delivery_unavailable" }, 503); }
       }
       return json({ error: "not_found" }, 404);
+    }
+
+    if (url.pathname === "/api/agent-config/options" && req.method === "GET") {
+      if (!authenticated(req)) return response("Authentication required", 401);
+      if (launch.mode !== "herdr") return response("Herdr unavailable", 503);
+      const state = targets.list(), target = state.targets.find(t => t.id === state.active) ?? null;
+      return json(await agentConfigOptions(launch, target), 200, { "Cache-Control": "no-store" });
+    }
+
+    if (url.pathname === "/api/agent-config/apply" && req.method === "POST") {
+      if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
+      if (!authenticated(req)) return response("Authentication required", 401);
+      if (launch.mode !== "herdr") return response("Herdr unavailable", 503);
+      const request = validateAgentConfigRequest(await jsonBody(req));
+      if (typeof request === "string") return json({ error: request }, 400);
+      const state = targets.list(), target = state.targets.find(t => t.id === state.active) ?? null;
+      return json({ results: await applyAgentConfig(launch, target, request) }, 200, { "Cache-Control": "no-store" });
     }
 
     if (url.pathname === "/api/herdr/targets" && req.method === "GET") {

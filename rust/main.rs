@@ -1,3 +1,4 @@
+mod agent_config;
 mod auth;
 mod edge_tts;
 mod herdr_events;
@@ -472,6 +473,11 @@ async fn foreground() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/ws", any(ws_handler))
         .route("/api/mobile/control", any(mobile::handler))
+        .route("/api/agent-config/options", get(agent_config::options))
+        .route(
+            "/api/agent-config/apply",
+            post(agent_config::apply).layer(DefaultBodyLimit::max(MAX_AUTH_BODY_BYTES)),
+        )
         .route("/api/auth/status", get(auth_status_handler))
         .route(
             "/api/auth/setup",
