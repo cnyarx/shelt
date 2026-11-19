@@ -28,14 +28,16 @@ export class InteractivePreviews {
     try {
       const canonical = await realpath(path);
       if (previewType(canonical)?.kind !== "html" || !withinPreviewRoot(canonical, this.roots)) return null;
-      const directory = dirname(canonical);
+      const directory = this.roots.find(root => withinPreviewRoot(canonical, [root]));
+      if (!directory) return null;
+      const entryPath = relative(directory, canonical);
       const grant = { directory, session, expires: Date.now() + 24 * 60 * 60 * 1000 };
-      const entry = await this.readFile(grant, basename(canonical));
+      const entry = await this.readFile(grant, entryPath);
       if (!entry || entry === "too-large") return null;
       for (const [key, entry] of this.grants) if (!this.valid(entry)) this.grants.delete(key);
       const token = randomBytes(32).toString("hex");
       this.grants.set(token, grant);
-      return { token, url: `/api/preview-content/${token}/${encodeURIComponent(basename(canonical))}` };
+      return { token, url: `/api/preview-content/${token}/${entryPath.split("/").map(encodeURIComponent).join("/")}` };
     } catch { return null; }
   }
 

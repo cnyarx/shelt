@@ -75,6 +75,16 @@ for (const backend of process.env.SHELT_TEST_RUST ? ["bun", "rust"] : ["bun"]) {
       expect(await big.text()).toBe(bigScript);
       await writeFile(join(directory, "assets/big.json"), JSON.stringify({ pad: "y".repeat(6 * 1024 * 1024) }));
       expect((await fetch(resourceBase + "assets/big.json", { headers: { Origin: "null" } })).status).toBe(413);
+      await mkdir(join(directory, "page"));
+      await mkdir(join(directory, "data"));
+      await writeFile(join(directory, "page/index.html"), '<script src="../data/comparison.js"></script>');
+      await writeFile(join(directory, "data/comparison.js"), 'window.comparison = 42;');
+      const nested = await (await create(join(directory, "page/index.html"))).json();
+      expect(nested.url).toBe(`/api/preview-content/${nested.token}/page/index.html`);
+      const sibling = await fetch(new URL("../data/comparison.js", `${base}${nested.url}`), { headers: { Origin: "null" } });
+      expect(sibling.status).toBe(200);
+      expect(await sibling.text()).toBe('window.comparison = 42;');
+      expect((await fetch(`${base}/api/preview-content/${nested.token}/%2e%2e/data/comparison.js`, { headers: { Origin: "null" } })).status).toBe(404);
       for (const path of [".private/secret.json", "alias.json", "outside.txt", "state/auth.json", "private.md", "assets/", "%2e%2e%2foutside.txt", "assets%5capp.js", "missing.js"]) {
         expect((await fetch(resourceBase + path)).status).toBe(404);
       }

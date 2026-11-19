@@ -48,15 +48,26 @@ pub async fn create(
         .and_then(|cookie| auth::parse_cookie(cookie, auth::SESSION_COOKIE))
         .unwrap()
         .to_string();
+    let Some(directory) = state
+        .preview_roots
+        .iter()
+        .find(|root| within_preview_root(&path, std::slice::from_ref(root)))
+    else {
+        return unavailable();
+    };
+    let Ok(entry_path) = path.strip_prefix(directory) else {
+        return unavailable();
+    };
+    let entry_rel = entry_path.to_string_lossy().to_string();
     let grant = Grant {
-        directory: path.parent().unwrap().to_path_buf(),
+        directory: directory.clone(),
         session,
         expires: SystemTime::now() + Duration::from_secs(24 * 60 * 60),
     };
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return unavailable();
-    };
-    if !matches!(read_file(&state, &grant, name), ReadOutcome::Ready(_, _)) {
+    if !matches!(
+        read_file(&state, &grant, &entry_rel),
+        ReadOutcome::Ready(_, _)
+    ) {
         return unavailable();
     }
     let mut random = [0u8; 32];
@@ -64,7 +75,11 @@ pub async fn create(
     let token: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
     let url = format!(
         "/api/preview-content/{token}/{}",
-        percent_encode(name.as_bytes())
+        entry_rel
+            .split('/')
+            .map(|part| percent_encode(part.as_bytes()))
+            .collect::<Vec<_>>()
+            .join("/")
     );
     let mut grants = state.interactive_previews.0.lock().unwrap();
     grants.retain(|_, grant| InteractivePreviews::valid(grant, &state.auth));
