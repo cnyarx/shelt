@@ -106,7 +106,7 @@ test("settings panel manages targets, switches connection and changes password",
       const body = init.body ? JSON.parse(init.body) : undefined;
       calls.push({ url, method, body });
       if (url === "/api/herdr/targets" && method === "GET") return ok({ ...state, targets: [...state.targets] });
-      if (url === "/api/agent-config/options" && method === "GET") return ok({ models: [], defaultModel: "", efforts: ["low", "medium", "high", "xhigh", "max"], agents: [] });
+      if (url === "/api/agent-config/options" && method === "GET") return ok({ models: [], modelChoices: [], defaultModel: "", efforts: ["low", "medium", "high", "xhigh", "max"], agents: [] });
       if (url === "/api/version" && method === "GET") return ok({ version: "开发版", commit: "464f2c5", dirty: true });
       if (url === "/api/herdr/targets" && method === "POST") {
         const entry = { id: "ef015678", ...body };

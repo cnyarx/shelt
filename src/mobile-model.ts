@@ -1,4 +1,4 @@
-export type MobileAgent = { paneId: string; title: string; workspace: string; cwd: string; status: string; kind: string };
+export type MobileAgent = { paneId: string; title: string; workspaceId: string; workspace: string; cwd: string; status: string; kind: string };
 export type NativeSnapshot = {
   focused_pane_id?: string | null;
   workspaces: { workspace_id: string; label?: string }[];
@@ -21,7 +21,7 @@ export function nativeAgents(snapshot: NativeSnapshot): MobileAgent[] {
     const workspace = workspaces.get(a.workspace_id)?.label || a.workspace_id;
     const tab = tabs.get(a.tab_id)?.label || a.tab_id;
     return { paneId: a.pane_id, title: [workspace, tab, a.name || a.terminal_title_stripped || a.agent || a.pane_id].filter(Boolean).join(" · "),
-      workspace, cwd: a.cwd || "", status: a.agent_status || "unknown", kind: a.agent || "" };
+      workspaceId: a.workspace_id, workspace, cwd: a.cwd || "", status: a.agent_status || "unknown", kind: a.agent || "" };
   });
 }
 

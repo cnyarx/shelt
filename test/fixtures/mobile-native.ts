@@ -52,7 +52,7 @@ export async function mobileNative(directory: string) {
           case "pane.read": {
             const pane = request.params.pane_id;
             if (!snapshot.agents.some(a => a.pane_id === pane)) { socket.end(JSON.stringify({ id: request.id, error: { code: "pane_not_found", message: "No such pane" } }) + "\n"); return; }
-            result = { type: "pane_read", pane_id: pane, text: screens.get(pane) ?? "" }; break;
+            result = { type: "pane_read", read: { pane_id: pane, text: screens.get(pane) ?? "" } }; break;
           }
           case "pane.send_input": {
             const pane = request.params.pane_id;

@@ -9,6 +9,7 @@ import {
   setNotifyDone,
 } from "./notify-preferences.ts";
 import { localizedError, onLanguageChange, setupLanguage, t } from "./i18n.ts";
+import type { AgentConfigOptions, AgentConfigResult, AgentConfigRow, ModelChoice } from "./agent-config.ts";
 
 type HerdrTarget = { id: string; name: string; remote: string; session: string | null };
 type TargetsResponse = { mode: string; active: string; targets: HerdrTarget[] };
@@ -123,10 +124,9 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   const agentResults = element("agent-config-results");
   const agentApply = element<HTMLButtonElement>("agent-config-apply");
   const agentRefresh = element<HTMLButtonElement>("agent-config-refresh");
-  type AgentRow = { paneId: string; title: string; status: string; input: string | null };
-  type AgentResult = { paneId: string; title: string; ok: boolean; reason: string };
-  let agentOptions: { models: string[]; defaultModel: string; efforts: string[]; agents: AgentRow[] } | null = null;
-  let agentResultRows: AgentResult[] = [];
+  const selectable = (a: AgentConfigRow) => (a.status === "idle" || a.status === "done") && a.input === "";
+  let agentOptions: AgentConfigOptions | null = null;
+  let agentResultRows: AgentConfigResult[] = [];
   let agentBusy = false;
   const checkedPanes = new Set<string>();
   const reasonText = (reason: string) => {
@@ -136,6 +136,29 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
     if (reason === "send_failed") return t("reasonSendFailed");
     if (reason.startsWith("status_")) return t("reasonStatus") + reason.slice(7);
     return reason;
+  };
+  const fillModels = (choices: ModelChoice[]) => {
+    const current = agentModel.value;
+    const keep = document.createElement("option");
+    keep.value = "";
+    keep.textContent = t("agentNoChange");
+    agentModel.replaceChildren(keep);
+    const groups = new Map<string, HTMLOptGroupElement>();
+    for (const choice of choices) {
+      let group = groups.get(choice.provider);
+      if (!group) {
+        group = document.createElement("optgroup");
+        group.label = choice.provider || t("agentOtherModels");
+        groups.set(choice.provider, group);
+        agentModel.append(group);
+      }
+      const option = document.createElement("option");
+      option.value = choice.selector;
+      const label = choice.name === choice.id ? choice.id : `${choice.name} — ${choice.id}`;
+      option.textContent = choice.multipleRoutes ? `${label} · ${t("agentDefaultRoute")}` : label;
+      group.append(option);
+    }
+    agentModel.value = choices.some(choice => choice.selector === current) ? current : "";
   };
   const fillSelect = (select: HTMLSelectElement, values: string[]) => {
     const current = select.value;
@@ -154,7 +177,7 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
   };
   const renderAgents = () => {
     if (!agentOptions) return;
-    fillSelect(agentModel, agentOptions.models);
+    fillModels(agentOptions.modelChoices);
     fillSelect(agentEffort, agentOptions.efforts);
     agentList.replaceChildren();
     if (!agentOptions.agents.length) {
@@ -163,31 +186,86 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
       empty.textContent = t("agentConfigNone");
       agentList.append(empty);
     }
-    for (const agent of agentOptions.agents) {
-      const item = document.createElement("li");
-      item.className = "agent-config-row";
+    const boxes = new Map<string, HTMLInputElement>();
+    const updateCounts: (() => void)[] = [];
+    const sync = () => {
+      for (const [id, box] of boxes) box.checked = checkedPanes.has(id);
+      for (const update of updateCounts) update();
+    };
+    const selectGroup = (agents: AgentConfigRow[], name: string) => {
+      const eligible = agents.filter(selectable);
       const label = document.createElement("label");
+      label.className = "agent-config-group-heading";
       const box = document.createElement("input");
       box.type = "checkbox";
-      box.dataset.pane = agent.paneId;
-      box.checked = checkedPanes.has(agent.paneId);
-      box.addEventListener("change", () => {
-        if (box.checked) checkedPanes.add(agent.paneId);
-        else checkedPanes.delete(agent.paneId);
+      const caption = document.createElement("span");
+      label.append(box, caption);
+      updateCounts.push(() => {
+        const count = eligible.filter(a => checkedPanes.has(a.paneId)).length;
+        box.disabled = eligible.length === 0;
+        box.checked = count > 0 && count === eligible.length;
+        box.indeterminate = count > 0 && count < eligible.length;
+        caption.textContent = `${name} (${count}/${eligible.length})`;
       });
-      const title = document.createElement("span");
-      title.className = "agent-config-title";
-      title.textContent = agent.title;
-      const state = document.createElement("span");
-      state.className = "agent-config-status";
-      state.textContent = agent.status;
-      const input = document.createElement("span");
-      input.className = "agent-config-input";
-      input.textContent = agent.input === null ? t("agentInputUnknown") : agent.input === "" ? t("agentInputEmpty") : agent.input;
-      label.append(box, title, state);
-      item.append(label, input);
-      agentList.append(item);
+      box.addEventListener("change", () => {
+        for (const a of agents) {
+          if (box.checked && selectable(a)) checkedPanes.add(a.paneId);
+          else checkedPanes.delete(a.paneId);
+        }
+        sync();
+      });
+      return label;
+    };
+    const spaces = new Map<string, AgentConfigRow[]>();
+    for (const agent of agentOptions.agents) {
+      const rows = spaces.get(agent.workspaceId);
+      if (rows) rows.push(agent);
+      else spaces.set(agent.workspaceId, [agent]);
     }
+    if (spaces.size) {
+      const all = document.createElement("li");
+      all.append(selectGroup(agentOptions.agents, t("agentSelectAll")));
+      agentList.append(all);
+    }
+    const spaceNames = [...spaces.values()].map(rows => rows[0]!.workspace);
+    for (const [spaceId, agents] of spaces) {
+      const group = document.createElement("li");
+      group.dataset.workspace = spaceId;
+      const rows = document.createElement("ul");
+      rows.className = "agent-config-list";
+      const name = agents[0]!.workspace;
+      const heading = spaceNames.indexOf(name) === spaceNames.lastIndexOf(name) ? name : `${name} · ${spaceId}`;
+      group.append(selectGroup(agents, heading), rows);
+      agentList.append(group);
+      for (const agent of agents) {
+        const item = document.createElement("li");
+        item.className = "agent-config-row";
+        const label = document.createElement("label");
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.dataset.pane = agent.paneId;
+        box.disabled = agent.status !== "idle" && agent.status !== "done";
+        boxes.set(agent.paneId, box);
+        box.addEventListener("change", () => {
+          if (box.checked) checkedPanes.add(agent.paneId);
+          else checkedPanes.delete(agent.paneId);
+          sync();
+        });
+        const title = document.createElement("span");
+        title.className = "agent-config-title";
+        title.textContent = agent.title;
+        const state = document.createElement("span");
+        state.className = "agent-config-status";
+        state.textContent = agent.status;
+        const input = document.createElement("span");
+        input.className = "agent-config-input";
+        input.textContent = agent.input === null ? t("agentInputUnknown") : agent.input === "" ? t("agentInputEmpty") : agent.input;
+        label.append(box, title, state);
+        item.append(label, input);
+        rows.append(item);
+      }
+    }
+    sync();
     agentResults.replaceChildren();
     for (const row of agentResultRows) {
       const item = document.createElement("li");
@@ -197,11 +275,11 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
     }
   };
   const loadAgents = async () => {
-    const loaded = await request("/api/agent-config/options", "GET") as NonNullable<typeof agentOptions>;
+    const loaded = await request("/api/agent-config/options", "GET") as AgentConfigOptions;
     agentOptions = loaded;
     checkedPanes.clear();
     for (const agent of loaded.agents) {
-      if ((agent.status === "idle" || agent.status === "done") && agent.input === "") checkedPanes.add(agent.paneId);
+      if (selectable(agent)) checkedPanes.add(agent.paneId);
     }
     renderAgents();
   };
@@ -214,12 +292,17 @@ export function setupSettings(options: { setSwitching: (value: boolean) => void;
     if (!panes.length || (!model && !effort)) { showStatus(() => t("agentSelectNothing")); return; }
     agentBusy = true;
     agentApply.disabled = true;
-    void request("/api/agent-config/apply", "POST", { panes, ...(model ? { model } : {}), ...(effort ? { effort } : {}) })
-      .then((result: { results: AgentResult[] }) => {
-        agentResultRows = result.results;
+    const targetId = agentOptions?.targetId;
+    agentResultRows = [];
+    void (async () => {
+      // Keep each request within the existing 64-pane and 8 KiB API limits.
+      for (let i = 0; i < panes.length; i += 48) {
+        const result = await request("/api/agent-config/apply", "POST", { targetId, panes: panes.slice(i, i + 48), ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
+        agentResultRows.push(...result.results);
         renderAgents();
-        showStatus(() => t("agentConfigDone"));
-      })
+      }
+      showStatus(() => t("agentConfigDone"));
+    })()
       .catch(showError)
       .finally(() => { agentBusy = false; agentApply.disabled = false; });
   });

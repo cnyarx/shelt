@@ -6,17 +6,27 @@ import { nativeAgents, validPane, type NativeSnapshot } from "./mobile-model.ts"
 import { nativeOnce } from "./mobile-service.ts";
 
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
-export const MODEL_ID_PATTERN = /^[A-Za-z0-9._:-]{1,120}$/;
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,120}$/;
+const protocols = ["openai", "openai-responses", "anthropic", "gemini", "vertex-ai", "qwen-oauth", "qwen-subscription"];
 
-export type AgentConfigRow = { paneId: string; title: string; status: string; input: string | null };
-export type AgentConfigOptions = { models: string[]; defaultModel: string; efforts: string[]; agents: AgentConfigRow[] };
+export type ModelChoice = { id: string; name: string; provider: string; selector: string; multipleRoutes: boolean };
+export type AgentConfigRow = { paneId: string; workspaceId: string; workspace: string; title: string; status: string; input: string | null };
+export type AgentConfigOptions = { targetId: string; models: string[]; modelChoices: ModelChoice[]; defaultModel: string; efforts: string[]; agents: AgentConfigRow[] };
 export type AgentConfigResult = { paneId: string; title: string; ok: boolean; reason: string };
 export type AgentConfigRequest = { panes: string[]; model?: string; effort?: string };
 
 export function inputBoxText(screen: string): string | null {
   const lines = screen.split("\n");
   let bottom = -1;
-  for (let i = lines.length - 1; i >= 0; i--) if (/^╰.*╯\s*$/u.test(lines[i]!)) { bottom = i; break; }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^╰.*╯\s*$/u.test(lines[i]!)) { bottom = i; break; }
+    if (!/^─{4,}\s*$/u.test(lines[i]!)) continue;
+    const prompt = lines[i - 1]?.trimEnd() ?? "";
+    if (!/^─{3,}(?: .* ──)?\s*$/u.test(lines[i - 2] ?? "") || !/^[>*](?: |$)/u.test(prompt)) return null;
+    const text = prompt.slice(1);
+    if (/^ {3}(?:Type your message or @path\/to\/file|输入您的消息或 @ 文件路径|Type your request, or \/usage|输入你的请求，或 \/usage)$/u.test(text)) return "";
+    return text.trim();
+  }
   if (bottom < 0) return null;
   let top = -1;
   for (let i = bottom - 1; i >= 0; i--) if (/^╭.*╮\s*$/u.test(lines[i]!)) { top = i; break; }
@@ -24,15 +34,46 @@ export function inputBoxText(screen: string): string | null {
   return lines.slice(top + 1, bottom).map(line => line.replace(/^│\s?/u, "").replace(/\s?│\s*$/u, "")).join("\n").trim();
 }
 
-export async function modelOptions(env = process.env): Promise<{ models: string[]; defaultModel: string }> {
+function validModelSelector(value: string): boolean {
+  const parts = /^([^()]+)(?:\(([^()]+)\))?$/.exec(value);
+  return !!parts && MODEL_ID_PATTERN.test(parts[1]!) && !parts[1]!.startsWith("--") && (!parts[2] || protocols.includes(parts[2]));
+}
+
+export async function modelOptions(env = process.env): Promise<Pick<AgentConfigOptions, "models" | "modelChoices" | "defaultModel">> {
   try {
     const settings = JSON.parse(await readFile(join(env.HOME || ".", ".qwen", "settings.json"), "utf8"));
-    const providers = Array.isArray(settings?.modelProviders) ? settings.modelProviders : [];
-    const ids = providers.map((provider: any) => (typeof provider?.id === "string" ? provider.id : "")).filter(Boolean);
+    const providers = settings?.modelProviders;
+    const groups = Array.isArray(providers) ? [["", providers] as const] : Object.entries(providers ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    const choices = new Map<string, ModelChoice>();
+    const declared = new Set<string>();
+    for (const [provider, entries] of groups) {
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        const id = entry?.id;
+        if (typeof id !== "string" || !MODEL_ID_PATTERN.test(id) || id.startsWith("--")) continue;
+        declared.add(id);
+        if (["imageOnly", "realtimeOnly", "fastOnly", "voiceOnly", "visionOnly"].some(flag => entry[flag] === true)) continue;
+        let protocol = settings.providerProtocol?.[provider] ?? provider;
+        if (entry.wireApi !== undefined) {
+          if (!["openai", "openai-responses"].includes(protocol) || !["responses", "chat-completions"].includes(entry.wireApi)) continue;
+          protocol = entry.wireApi === "responses" ? "openai-responses" : "openai";
+        }
+        if (provider && !protocols.includes(protocol)) continue;
+        const selector = protocol ? `${id}(${protocol})` : id;
+        const prior = choices.get(selector);
+        // /model takes an ID and protocol, not an endpoint. Don't promise a specific route on collision.
+        if (prior) { prior.multipleRoutes = true; prior.name = id; if (prior.provider !== provider) prior.provider = protocol; continue; }
+        choices.set(selector, { provider, id, name: typeof entry.name === "string" && entry.name ? entry.name : id, selector, multipleRoutes: false });
+      }
+    }
     const defaultModel = typeof settings?.model?.name === "string" ? settings.model.name : "";
-    return { models: [...new Set([...ids, ...(defaultModel ? [defaultModel] : [])])], defaultModel };
+    if (validModelSelector(defaultModel) && !declared.has(defaultModel) && !choices.has(defaultModel)) {
+      choices.set(defaultModel, { id: defaultModel, name: defaultModel, provider: "", selector: defaultModel, multipleRoutes: false });
+    }
+    const modelChoices = [...choices.values()];
+    return { models: [...new Set(modelChoices.map(m => m.id))], modelChoices, defaultModel };
   } catch {
-    return { models: [], defaultModel: "" };
+    return { models: [], modelChoices: [], defaultModel: "" };
   }
 }
 
@@ -45,7 +86,7 @@ export function validateAgentConfigRequest(body: Record<string, unknown> | null)
   }
   const model = body.model === undefined || body.model === "" ? undefined : body.model;
   const effort = body.effort === undefined || body.effort === "" ? undefined : body.effort;
-  if (model !== undefined && (typeof model !== "string" || !MODEL_ID_PATTERN.test(model))) return "invalid_model";
+  if (model !== undefined && (typeof model !== "string" || !validModelSelector(model))) return "invalid_model";
   if (effort !== undefined && (typeof effort !== "string" || !(EFFORT_LEVELS as readonly string[]).includes(effort))) return "invalid_effort";
   if (model === undefined && effort === undefined) return "nothing_to_apply";
   return { panes, ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }) };
@@ -58,14 +99,15 @@ async function snapshotAgents(launch: LaunchTarget, target: HerdrTarget | null, 
 }
 
 export async function agentConfigOptions(launch: LaunchTarget, target: HerdrTarget | null, env = process.env): Promise<AgentConfigOptions> {
-  const { models, defaultModel } = await modelOptions(env);
+  const catalog = await modelOptions(env);
   const agents = (await snapshotAgents(launch, target, env)).filter(agent => agent.kind === "qwen");
   const rows: AgentConfigRow[] = [];
   for (const agent of agents) {
-    const read = await nativeOnce(launch, target, "pane.read", { pane_id: agent.paneId, source: "visible", format: "text", strip_ansi: true }, env) as { text?: string } | null;
-    rows.push({ paneId: agent.paneId, title: agent.title, status: agent.status, input: read && typeof read.text === "string" ? inputBoxText(read.text) : null });
+    const read = await nativeOnce(launch, target, "pane.read", { pane_id: agent.paneId, source: "visible", format: "text", strip_ansi: true }, env) as { read?: { text?: string } } | null;
+    const text = read?.read?.text;
+    rows.push({ paneId: agent.paneId, title: agent.title, workspaceId: agent.workspaceId, workspace: agent.workspace, status: agent.status, input: typeof text === "string" ? inputBoxText(text) : null });
   }
-  return { models, defaultModel, efforts: [...EFFORT_LEVELS], agents: rows };
+  return { ...catalog, targetId: target?.id ?? "local", efforts: [...EFFORT_LEVELS], agents: rows };
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

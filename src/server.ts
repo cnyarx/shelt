@@ -509,9 +509,11 @@ const server = Bun.serve<SessionData>({
       if (!allowedOrigin(req.headers.get("origin"), requestHost, allowedOrigins)) return response("Cross-origin rejected", 403);
       if (!authenticated(req)) return response("Authentication required", 401);
       if (launch.mode !== "herdr") return response("Herdr unavailable", 503);
-      const request = validateAgentConfigRequest(await jsonBody(req));
+      const body = await jsonBody(req);
+      const request = validateAgentConfigRequest(body);
       if (typeof request === "string") return json({ error: request }, 400);
       const state = targets.list(), target = state.targets.find(t => t.id === state.active) ?? null;
+      if (body?.targetId !== undefined && body.targetId !== state.active) return json({ error: "target_changed" }, 409);
       return json({ results: await applyAgentConfig(launch, target, request) }, 200, { "Cache-Control": "no-store" });
     }
 

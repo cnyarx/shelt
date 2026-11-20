@@ -5,9 +5,37 @@ pub const EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 pub fn input_box_text(screen: &str) -> Option<String> {
     let lines: Vec<&str> = screen.split('\n').collect();
-    let bottom = lines
-        .iter()
-        .rposition(|line| line.trim_end().starts_with('╰') && line.trim_end().ends_with('╯'))?;
+    let bottom = lines.iter().rposition(|line| {
+        let line = line.trim_end();
+        (line.starts_with('╰') && line.ends_with('╯'))
+            || (line.starts_with("────") && line.trim_matches('─').is_empty())
+    })?;
+    if lines[bottom].starts_with('─') {
+        let top = lines.get(bottom.checked_sub(2)?)?.trim_end();
+        let suffix = top.trim_start_matches('─');
+        if !top.starts_with("───")
+            || !(suffix.is_empty() || (suffix.starts_with(' ') && suffix.ends_with(" ──")))
+        {
+            return None;
+        }
+        let text = lines[bottom - 1].trim_end().strip_prefix(['>', '*'])?;
+        if !text.is_empty() && !text.starts_with(' ') {
+            return None;
+        }
+        let placeholder = text.strip_prefix("   ");
+        if matches!(
+            placeholder,
+            Some(
+                "Type your message or @path/to/file"
+                    | "输入您的消息或 @ 文件路径"
+                    | "Type your request, or /usage"
+                    | "输入你的请求，或 /usage"
+            )
+        ) {
+            return Some(String::new());
+        }
+        return Some(text.trim().to_string());
+    }
     let top = lines[..bottom]
         .iter()
         .rposition(|line| line.trim_end().starts_with('╭') && line.trim_end().ends_with('╮'))?;
@@ -24,39 +52,151 @@ pub fn input_box_text(screen: &str) -> Option<String> {
     Some(content.join("\n").trim().to_string())
 }
 
-pub async fn model_options() -> (Vec<String>, String) {
-    let path = PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".qwen/settings.json");
-    let Ok(text) = tokio::fs::read_to_string(path).await else {
-        return (Vec::new(), String::new());
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&text) else {
-        return (Vec::new(), String::new());
-    };
-    let mut models: Vec<String> = Vec::new();
-    if let Some(providers) = value["modelProviders"].as_array() {
-        for provider in providers {
-            if let Some(id) = provider["id"].as_str() {
-                if !id.is_empty() && !models.iter().any(|model| model == id) {
-                    models.push(id.to_string());
-                }
-            }
-        }
-    }
-    let default_model = value["model"]["name"].as_str().unwrap_or("").to_string();
-    if !default_model.is_empty() && !models.iter().any(|model| model == &default_model) {
-        models.push(default_model.clone());
-    }
-    (models, default_model)
+const PROTOCOLS: &[&str] = &[
+    "openai",
+    "openai-responses",
+    "anthropic",
+    "gemini",
+    "vertex-ai",
+    "qwen-oauth",
+    "qwen-subscription",
+];
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelChoice {
+    provider: String,
+    id: String,
+    name: String,
+    selector: String,
+    multiple_routes: bool,
+}
+
+fn valid_model_id(id: &str) -> bool {
+    (1..=120).contains(&id.len())
+        && !id.starts_with("--")
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._:/-".contains(&b))
 }
 
 fn valid_model(model: &str) -> bool {
-    (1..=120).contains(&model.len())
-        && model
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._:-".contains(&b))
+    if let Some((id, suffix)) = model.split_once('(') {
+        return valid_model_id(id)
+            && suffix
+                .strip_suffix(')')
+                .is_some_and(|protocol| PROTOCOLS.contains(&protocol));
+    }
+    valid_model_id(model)
 }
 
-async fn qwen_agents(target: Option<&targets::HerdrTarget>) -> Vec<(String, String, String)> {
+async fn model_options() -> (Vec<ModelChoice>, String) {
+    let path = PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".qwen/settings.json");
+    let Ok(text) = tokio::fs::read_to_string(path).await else {
+        return Default::default();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return Default::default();
+    };
+    let providers = &value["modelProviders"];
+    let groups: Vec<(&str, &Value)> = if let Some(groups) = providers.as_object() {
+        groups
+            .iter()
+            .map(|(key, entries)| (key.as_str(), entries))
+            .collect()
+    } else {
+        vec![("", providers)]
+    };
+    let mut choices: Vec<ModelChoice> = Vec::new();
+    let mut declared = HashSet::new();
+    for (provider, entries) in groups {
+        let Some(entries) = entries.as_array() else {
+            continue;
+        };
+        for entry in entries {
+            let Some(id) = entry["id"].as_str().filter(|id| valid_model_id(id)) else {
+                continue;
+            };
+            declared.insert(id);
+            if [
+                "imageOnly",
+                "realtimeOnly",
+                "fastOnly",
+                "voiceOnly",
+                "visionOnly",
+            ]
+            .iter()
+            .any(|flag| entry[*flag].as_bool() == Some(true))
+            {
+                continue;
+            }
+            let mut protocol = value["providerProtocol"][provider]
+                .as_str()
+                .unwrap_or(provider);
+            if let Some(wire) = entry.get("wireApi") {
+                protocol = match (protocol, wire.as_str()) {
+                    ("openai" | "openai-responses", Some("responses")) => "openai-responses",
+                    ("openai" | "openai-responses", Some("chat-completions")) => "openai",
+                    _ => continue,
+                };
+            }
+            if !provider.is_empty() && !PROTOCOLS.contains(&protocol) {
+                continue;
+            }
+            let selector = if protocol.is_empty() {
+                id.to_string()
+            } else {
+                format!("{id}({protocol})")
+            };
+            if let Some(prior) = choices.iter_mut().find(|m| m.selector == selector) {
+                prior.multiple_routes = true;
+                prior.name = id.to_string();
+                if prior.provider != provider {
+                    prior.provider = protocol.to_string();
+                }
+            } else {
+                choices.push(ModelChoice {
+                    provider: provider.to_string(),
+                    id: id.to_string(),
+                    name: entry["name"]
+                        .as_str()
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or(id)
+                        .to_string(),
+                    selector,
+                    multiple_routes: false,
+                });
+            }
+        }
+    }
+    let default_model = value["model"]["name"].as_str().unwrap_or("");
+    if valid_model(default_model)
+        && !declared.contains(default_model)
+        && !choices.iter().any(|m| m.selector == default_model)
+    {
+        choices.push(ModelChoice {
+            provider: String::new(),
+            id: default_model.to_string(),
+            name: default_model.to_string(),
+            selector: default_model.to_string(),
+            multiple_routes: false,
+        });
+    }
+    (choices, default_model.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentRow {
+    pane_id: String,
+    title: String,
+    status: String,
+    workspace_id: String,
+    workspace: String,
+    input: Option<String>,
+}
+
+async fn qwen_agents(target: Option<&targets::HerdrTarget>) -> Vec<AgentRow> {
     let Some(result) = mobile::native_once(target, "session.snapshot", json!({})).await else {
         return Vec::new();
     };
@@ -110,7 +250,7 @@ async fn qwen_agents(target: Option<&targets::HerdrTarget>) -> Vec<(String, Stri
             .find(|value| !value.is_empty())
             .unwrap_or("")
             .to_string();
-        let title = [workspace, tab, name]
+        let title = [workspace.as_str(), &tab, &name]
             .into_iter()
             .filter(|part| !part.is_empty())
             .collect::<Vec<_>>()
@@ -120,7 +260,14 @@ async fn qwen_agents(target: Option<&targets::HerdrTarget>) -> Vec<(String, Stri
             .filter(|status| !status.is_empty())
             .unwrap_or("unknown")
             .to_string();
-        rows.push((pane, title, status));
+        rows.push(AgentRow {
+            pane_id: pane,
+            title,
+            status,
+            workspace_id: agent["workspace_id"].as_str().unwrap_or("").to_string(),
+            workspace,
+            input: None,
+        });
     }
     rows
 }
@@ -141,22 +288,27 @@ pub async fn options(State(state): State<AppState>, headers: HeaderMap) -> Respo
         return secure((StatusCode::SERVICE_UNAVAILABLE, "Herdr unavailable").into_response());
     }
     let target = active_target(&state);
-    let (models, default_model) = model_options().await;
-    let mut agents = Vec::new();
-    for (pane, title, status) in qwen_agents(target.as_ref()).await {
+    let (choices, default_model) = model_options().await;
+    let mut seen = HashSet::new();
+    let models: Vec<_> = choices
+        .iter()
+        .map(|m| &m.id)
+        .filter(|id| seen.insert(*id))
+        .collect();
+    let mut agents = qwen_agents(target.as_ref()).await;
+    for agent in &mut agents {
         let read = mobile::native_once(
             target.as_ref(),
             "pane.read",
-            json!({"pane_id": pane, "source": "visible", "format": "text", "strip_ansi": true}),
+            json!({"pane_id": agent.pane_id, "source": "visible", "format": "text", "strip_ansi": true}),
         )
         .await;
-        let input = read
-            .and_then(|value| value["text"].as_str().map(str::to_string))
+        agent.input = read
+            .and_then(|value| value["read"]["text"].as_str().map(str::to_string))
             .and_then(|text| input_box_text(&text));
-        agents.push(json!({"paneId": pane, "title": title, "status": status, "input": input}));
     }
     let mut response = secure(
-        Json(json!({"models": models, "defaultModel": default_model, "efforts": EFFORT_LEVELS, "agents": agents}))
+        Json(json!({"targetId": target.as_ref().map_or("local", |t| t.id.as_str()), "models": models, "modelChoices": choices, "defaultModel": default_model, "efforts": EFFORT_LEVELS, "agents": agents}))
             .into_response(),
     );
     response
@@ -279,17 +431,29 @@ pub async fn apply(State(state): State<AppState>, headers: HeaderMap, body: Stri
         );
     }
     let target = active_target(&state);
+    if value
+        .get("targetId")
+        .is_some_and(|id| id.as_str() != Some(target.as_ref().map_or("local", |t| t.id.as_str())))
+    {
+        return secure(
+            (
+                StatusCode::CONFLICT,
+                Json(json!({"error": "target_changed"})),
+            )
+                .into_response(),
+        );
+    }
     let agents = qwen_agents(target.as_ref()).await;
     let mut results = Vec::new();
     for pane in requested {
-        let Some((_, title, status)) = agents.iter().find(|(id, _, _)| id == &pane) else {
+        let Some(agent) = agents.iter().find(|agent| agent.pane_id == pane) else {
             results.push(
                 json!({"paneId": pane, "title": pane, "ok": false, "reason": "agent_not_found"}),
             );
             continue;
         };
-        let title = title.clone();
-        let status = status.clone();
+        let title = &agent.title;
+        let status = agent.status.as_str();
         if status != "idle" && status != "done" {
             results.push(json!({"paneId": pane, "title": title, "ok": false, "reason": format!("status_{status}")}));
             continue;

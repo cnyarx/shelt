@@ -19,11 +19,19 @@ function setup(mode = "herdr") {
   });
   const get = (id: string) => { if (!nodes.has(id)) nodes.set(id, create()); return nodes.get(id); };
   const options = {
-    models: ["prov-a", "prov-b"], defaultModel: "prov-a", efforts: ["low", "medium", "high", "xhigh", "max"],
+    targetId: "local", models: ["org/chat"], defaultModel: "org/chat", efforts: ["low", "medium", "high", "xhigh", "max"],
+    modelChoices: [
+      { provider: "openai", id: "org/chat", name: "Chat", selector: "org/chat(openai)", multipleRoutes: false },
+      { provider: "anthropic", id: "org/chat", name: "Other", selector: "org/chat(anthropic)", multipleRoutes: false },
+    ],
     agents: [
-      { paneId: "p1", title: "智能体一", status: "idle", input: "" },
-      { paneId: "p2", title: "智能体二", status: "idle", input: "hello draft" },
-      { paneId: "p3", title: "智能体三", status: "working", input: null },
+      { workspaceId: "w9", workspace: "同名", paneId: "p1", title: "智能体一", status: "idle", input: "" },
+      { workspaceId: "w9", workspace: "同名", paneId: "p2", title: "智能体二", status: "idle", input: "hello draft" },
+      { workspaceId: "w9", workspace: "同名", paneId: "p3", title: "智能体三", status: "working", input: null },
+      { workspaceId: "w9", workspace: "同名", paneId: "p4", title: "智能体四", status: "done", input: "" },
+      { workspaceId: "w1", workspace: "同名", paneId: "p5", title: "智能体五", status: "idle", input: "" },
+      { workspaceId: "w1", workspace: "同名", paneId: "p6", title: "智能体六", status: "idle", input: null },
+      { workspaceId: "w2", workspace: "待确认", paneId: "p7", title: "智能体七", status: "blocked", input: "" },
     ],
   };
   const context: any = {
@@ -55,28 +63,63 @@ test("settings bulk agent config defaults checks to idle empty-input qwen rows a
   await env.flush();
   expect(env.get("settings-agents").hidden).toBe(false);
   const list = env.get("agent-config-list");
-  expect(list.children).toHaveLength(3);
-  const boxes = list.children.map((row: any) => row.children[0].children[0]);
-  expect(boxes.map((box: any) => box.checked)).toEqual([true, false, false]);
-  expect(list.children.map((row: any) => row.children[1].textContent)).toEqual(["输入框空", "hello draft", "输入框读不到"]);
-  expect(env.get("agent-model").children).toHaveLength(3);
+  const [all, first, second, blocked] = list.children;
+  expect(list.children.slice(1).map((group: any) => group.dataset.workspace)).toEqual(["w9", "w1", "w2"]);
+  const checkbox = (el: any) => el.children[0].children[0];
+  const change = (el: any, checked: boolean) => { checkbox(el).checked = checked; checkbox(el).handlers.change(); };
+  expect(checkbox(all).checked).toBe(true);
+  expect(checkbox(blocked).disabled).toBe(true);
+  const rows = first.children[1].children;
+  expect(rows.map((row: any) => checkbox(row).checked)).toEqual([true, false, false, true]);
+  expect(checkbox(rows[2]).disabled).toBe(true);
+  change(rows[0], false);
+  expect(checkbox(all).indeterminate).toBe(true);
+  expect(checkbox(first).indeterminate).toBe(true);
+  expect(checkbox(second).checked).toBe(true);
+  expect(first.children[0].children[1].textContent).toContain("1/2");
+  change(all, false);
+  change(first, true);
+  expect(checkbox(second).checked).toBe(false);
+  change(all, true);
+  expect(rows.map((r: any) => checkbox(r).checked)).toEqual([true, false, false, true]);
+  expect(second.children[1].children.map((r: any) => checkbox(r).checked)).toEqual([true, false]);
+  expect(all.children[0].children[1].textContent).toContain("3/3");
+  expect(env.applies).toHaveLength(0);
+  change(second, false);
+  change(rows[3], false);
+  const [, openai, anthropic] = env.get("agent-model").children;
+  expect([openai.label, anthropic.label]).toEqual(["openai", "anthropic"]);
+  expect(openai.children[0].textContent).toBe("Chat — org/chat");
+  expect(anthropic.children[0].value).toBe("org/chat(anthropic)");
   expect(env.get("agent-effort").children).toHaveLength(6);
-  env.get("agent-model").value = "prov-b";
+  env.get("agent-model").value = anthropic.children[0].value;
   env.get("agent-effort").value = "high";
   env.get("agent-config-apply").handlers.click();
   await env.flush();
-  expect(env.applies).toEqual([{ panes: ["p1"], model: "prov-b", effort: "high" }]);
+  expect(env.applies).toEqual([{ targetId: "local", panes: ["p1"], model: "org/chat(anthropic)", effort: "high" }]);
   const results = env.get("agent-config-results");
   expect(results.children).toHaveLength(1);
   expect(results.children[0].className).toBe("agent-config-result ok");
   expect(results.children[0].textContent).toBe("智能体一 — 已发送");
   expect(env.get("settings-status").textContent).toBe("批量应用完成。");
-  boxes[0].checked = false;
-  boxes[0].handlers.change();
+  change(list.children[0], false);
   env.get("agent-config-apply").handlers.click();
   await env.flush();
   expect(env.applies).toHaveLength(1);
   expect(env.get("settings-status").textContent).toBe("请先勾选至少一个 agent，并选择模型或思考等级。");
+});
+
+test("apply sends every eligible pane once even when the selection exceeds one request", async () => {
+  const env = setup();
+  env.options.agents = Array.from({ length: 70 }, (_, i) => ({ ...env.options.agents[0]!, paneId: `p${i}` }));
+  env.get("settings-toggle").handlers.click();
+  await env.flush();
+  env.get("agent-effort").value = "medium";
+  env.get("agent-config-apply").handlers.click();
+  await env.flush();
+  expect(env.applies.length).toBeGreaterThan(1);
+  expect(env.applies.flatMap(r => r.panes)).toEqual(env.options.agents.map(a => a.paneId));
+  expect(env.applies.every(r => r.panes.length <= 64 && r.targetId === "local" && r.effort === "medium" && !("model" in r))).toBe(true);
 });
 
 test("settings bulk agent config stays hidden in shell mode", async () => {
