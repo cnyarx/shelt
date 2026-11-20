@@ -46,6 +46,23 @@ test("findUrls trims trailing punctuation but keeps inner slashes", () => {
   ]);
 });
 
+test("a parenthesized URL ends at its own closing delimiter, not at the next space", () => {
+  const review = "https://example.org/reviews/12345678";
+  const nested = "https://example.org/中文/(a_(b))?q=(c)#(d)";
+  const fullWidth = "https://example.org/资料（甲（乙））";
+  for (const [url, line] of [
+    [review, `1. 本轮没有新的编排结果。 17:06 核实，编排修复单 (${review})仍在第二轮 AI 评审。`],
+    [nested, `参考 ( ${nested})仍在评审。`],
+    [fullWidth, `评审单（${fullWidth}）已回复。`],
+  ] as const) {
+    const start = line.indexOf(url);
+    expect(findUrls(line)).toEqual([{ url, start, end: start + url.length }]);
+  }
+  const next = "http://example.org/%28file%29";
+  expect(findUrls(`(${review})见（${next}）结束`).map(link => link.url)).toEqual([review, next]);
+  expect(findUrls("https://example.org/a)b?q=1")[0]?.url).toBe("https://example.org/a)b?q=1");
+});
+
 test("a Markdown destination ends before adjacent prose and the next link", () => {
   const url = "https://example.org/projects/123/workitems/456";
   const prefix = "2.2 请权限管理员在[镜像工作项](";
@@ -58,9 +75,9 @@ test("a Markdown destination ends before adjacent prose and the next link", () =
   }
 });
 
-test("a wrapped Markdown link uses the same exact destination for underline, hover and click", async () => {
-  const prefix = "[item](", url = "https://example.com/items/12345678";
-  const text = `${prefix}${url})回复：`;
+test.each(["[item](", "item (", "("])("a wrapped link after %s uses the same exact destination for underline, hover and click", async prefix => {
+  const url = "https://example.com/items/12345678";
+  const text = `${prefix}${url})仍在第二轮 AI 评审。`;
   const cols = 25;
   const terminal = makeTerminal([text.slice(0, cols), text.slice(cols)], 1, cols);
   const mount = makeMount(), opened: string[] = [];

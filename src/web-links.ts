@@ -13,15 +13,20 @@ export function findUrls(text: string): UrlMatch[] {
     const start = match.index;
     let before = start;
     while (before > 0 && /[ \t]/.test(text[before - 1]!)) before--;
-    const markdown = text.endsWith("](", before);
+    const opener = text[before - 1];
+    const closer = opener === "(" ? ")" : opener === "（" ? "）" : undefined;
     let depth = 0, end = scheme.lastIndex;
     for (; end < text.length && !URL_END.test(text[end]!); end++) {
-      if (!markdown) continue;
-      if (text[end] === "(") depth++;
-      if (text[end] === ")" && depth-- === 0) break;
+      if (!closer) continue;
+      if (text[end] === opener) depth++;
+      if (text[end] === closer) {
+        if (depth === 0) break;
+        depth--;
+      }
     }
     const raw = text.slice(start, end);
-    const url = markdown ? raw : raw.replace(TRAILING_PUNCTUATION, "");
+    const delimited = (closer !== undefined && text[end] === closer) || text.endsWith("](", before);
+    const url = delimited ? raw : raw.replace(TRAILING_PUNCTUATION, "");
     if (url.length > match[0].length) matches.push({ url, start, end: start + url.length });
     scheme.lastIndex = end;
   }
