@@ -77,10 +77,7 @@ export class TodoController {
   }
   private open(open: boolean): void {
     this.panel.hidden = !open || !this.visible; this.toggle.setAttribute("aria-expanded", String(!this.panel.hidden));
-    if (open) {
-      for (const id of ["settings-toggle", "terminal-tts-toggle"]) { const other = element<HTMLButtonElement>(id); if (other.getAttribute("aria-expanded") === "true") other.click(); }
-      void this.refresh().catch(e => this.error(e));
-    }
+    if (open) void this.refresh().catch(e => this.error(e));
   }
   private async api(path = "", method = "GET", body?: unknown): Promise<any> {
     const response = await fetch("/api/todos" + path, { method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });

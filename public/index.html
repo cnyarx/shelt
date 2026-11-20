@@ -29,7 +29,6 @@
       </form>
     </main>
     <main id="terminal" aria-label="Shelt terminal" hidden></main>
-    <button id="mobile-toggle" type="button" aria-label="手机模式" data-i18n-aria-label="mobileMode" hidden>▤</button>
     <header id="mobile-header" hidden><button id="mobile-agents-toggle" type="button">智能体</button><span id="mobile-current"></span><button id="mobile-zoom" type="button" data-i18n="mobileZoom">放大/还原</button><button id="mobile-desktop" type="button" data-i18n="mobileDesktop">PC模式</button></header>
     <aside id="mobile-agents" aria-label="智能体" data-i18n-aria-label="mobileAgents" hidden>
       <header><h2 data-i18n="mobileAgents">智能体</h2><button id="mobile-refresh" type="button" data-i18n="mobileRefresh">刷新</button><button id="mobile-agents-close" type="button" aria-label="关闭" data-i18n-aria-label="mobileClose">×</button></header>
@@ -42,9 +41,6 @@
       <form id="mobile-compose" hidden><textarea id="mobile-draft" rows="2" maxlength="60000" aria-label="消息草稿" data-i18n-aria-label="mobileDraft" placeholder="写好后发送；不会自动重发" data-i18n-placeholder="mobilePlaceholder"></textarea><button id="mobile-send" type="submit" data-i18n="mobileSend">发送</button></form>
       <p id="mobile-status" role="status" aria-live="polite"></p>
     </footer>
-    <button id="todo-toggle" type="button" aria-expanded="false" aria-controls="todo-panel" aria-label="待办清单" data-i18n-aria-label="todoList" title="待办清单" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 12l2 2 3-4M11 12h10M3 18l2 2 3-4M11 18h10"/></svg><span id="todo-count">0</span>
-    </button>
     <aside id="todo-panel" aria-label="待办清单" data-i18n-aria-label="todoList" hidden>
       <header class="todo-heading"><h2 data-i18n="todoList">待办清单</h2><button id="todo-close" type="button" aria-label="收起" data-i18n-aria-label="todoClose">×</button></header>
       <div class="todo-toolbar"><select id="todo-project" aria-label="项目" data-i18n-aria-label="todoProject"></select><button id="todo-new-project" type="button" data-i18n="todoNewProject">新建项目</button><button id="todo-edit-project-button" type="button" data-i18n="edit" disabled>编辑</button></div>
@@ -73,8 +69,9 @@
       </section>
       <p id="todo-status" role="status" aria-live="polite"></p>
     </aside>
+    <div id="terminal-tools">
     <aside id="terminal-tts-toolbar" aria-label="终端正文朗读" data-i18n-aria-label="terminalSpeechToolbar" hidden>
-      <button id="terminal-tts-toggle" type="button" aria-expanded="false" aria-controls="terminal-tts-controls" aria-label="语音朗读工具栏">
+      <button id="terminal-tts-toggle" class="terminal-tool" type="button" aria-expanded="false" aria-controls="terminal-tts-controls" aria-label="语音朗读工具栏" title="终端正文朗读" data-i18n-title="terminalSpeechToolbar">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zm-2.25-8.66v2.07a7 7 0 0 1 0 13.18v2.07a9 9 0 0 0 0-17.32z" /></svg>
       </button>
       <div id="terminal-tts-controls">
@@ -99,13 +96,20 @@
         <p class="terminal-tts-note" data-i18n="terminalSpeechNote">仅识别 Qwen 的 ◆︎ 正文。滚动、缩放或切换 agent 时可能暂停；不会读取会话日志。朗读文本会发送到现有在线语音服务。</p>
       </div>
     </aside>
-    <span id="sheltie-peek" aria-hidden="true">
-      <svg viewBox="0 0 512 512" focusable="false"><use href="/favicon.svg#sheltie-head" /></svg>
-    </span>
-    <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="设置" data-i18n-aria-label="settings" hidden>
+    <button id="todo-toggle" class="terminal-tool" type="button" aria-expanded="false" aria-controls="todo-panel" aria-label="待办清单" data-i18n-aria-label="todoList" title="待办清单" data-i18n-title="todoList" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 12l2 2 3-4M11 12h10M3 18l2 2 3-4M11 18h10"/></svg><span id="todo-count">0</span>
+    </button>
+    <button id="mobile-toggle" class="terminal-tool" type="button" aria-label="手机模式" data-i18n-aria-label="mobileMode" title="手机模式" data-i18n-title="mobileMode" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>
+    </button>
+    <button id="settings-toggle" class="terminal-tool" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="设置" data-i18n-aria-label="settings" title="设置" data-i18n-title="settings" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
       <span id="update-dot" aria-hidden="true" hidden></span>
     </button>
+    <span id="sheltie-peek" aria-hidden="true">
+      <svg viewBox="0 0 512 512" focusable="false"><use href="/favicon.svg#sheltie-head" /></svg>
+    </span>
+    </div>
     <aside id="settings-panel" aria-label="设置" data-i18n-aria-label="settings" hidden>
       <header class="settings-heading">
         <h2 data-i18n="settings">设置</h2>

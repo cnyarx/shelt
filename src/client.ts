@@ -343,6 +343,14 @@ installVisibleViewportSizing(scheduleResize);
 setupSettings({ setSwitching: (value) => { switchingTarget = value; }, checkUpdates: () => { void updates.check(); } });
 const updates = setupUpdates();
 const todos = new TodoController();
+const tools = requiredElement("terminal-tools");
+tools.addEventListener("click", event => {
+  const button = (event.target as Element).closest("button.terminal-tool");
+  if (!button) return;
+  for (const other of tools.querySelectorAll<HTMLButtonElement>('.terminal-tool[aria-expanded="true"]')) {
+    if (other !== button) other.click();
+  }
+}, true);
 setupAgentNotifications();
 installSheltiePeek(requiredElement("settings-toggle"), requiredElement("settings-panel"), requiredElement("sheltie-peek"));
 

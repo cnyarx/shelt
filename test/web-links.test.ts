@@ -46,6 +46,35 @@ test("findUrls trims trailing punctuation but keeps inner slashes", () => {
   ]);
 });
 
+test("a Markdown destination ends before adjacent prose and the next link", () => {
+  const url = "https://example.org/projects/123/workitems/456";
+  const prefix = "2.2 请权限管理员在[镜像工作项](";
+  const line = `${prefix}${url})回复：  `;
+  expect(findUrls(line)).toEqual([{ url, start: prefix.length, end: prefix.length + url.length }]);
+  const nested = "https://example.com/中文/(a_(b))?q=(c)#(d)";
+  const next = "http://example.org/%28id%29";
+  for (const text of [`[一](${nested})[二](${next})。`, `[一]( ${nested} "标题")，再看[二](${next})`]) {
+    expect(findUrls(text)).toEqual([nested, next].map(url => ({ url, start: text.indexOf(url), end: text.indexOf(url) + url.length })));
+  }
+});
+
+test("a wrapped Markdown link uses the same exact destination for underline, hover and click", async () => {
+  const prefix = "[item](", url = "https://example.com/items/12345678";
+  const text = `${prefix}${url})回复：`;
+  const cols = 25;
+  const terminal = makeTerminal([text.slice(0, cols), text.slice(cols)], 1, cols);
+  const mount = makeMount(), opened: string[] = [];
+  const provider = createWebLinkProvider(terminal, mount, value => opened.push(value));
+  for (const row of [1, 2]) {
+    const [link] = await provideLinks(provider, row);
+    expect(link!.range).toEqual({ start: { x: prefix.length + 1, y: 1 }, end: { x: prefix.length + url.length - cols, y: 2 } });
+    link!.hover?.(undefined as never, link!.text);
+    expect(mount.title).toBe(url);
+    link!.activate(undefined as never, link!.text);
+  }
+  expect(opened).toEqual([url, url]);
+});
+
 test("findUrls ignores non-URL text and bare protocols", () => {
   expect(findUrls("no links here")).toEqual([]);
   expect(findUrls("file:///tmp/report.md")).toEqual([]);

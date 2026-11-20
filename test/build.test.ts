@@ -37,6 +37,18 @@ describe("production bundle", () => {
     expect(styles).not.toContain("border-bottom: 2px solid transparent");
   });
 
+  test("ships one icon strip with labeled actions and keeps badges on their own buttons", async () => {
+    const ids: (string | null)[] = [], icons: string[] = [], badges: (string | null)[] = [];
+    const html = new HTMLRewriter()
+      .on("#terminal-tools button.terminal-tool[aria-label][title]", { element(el) { ids.push(el.getAttribute("id")); } })
+      .on("#terminal-tools button.terminal-tool > svg[aria-hidden=true]", { element(el) { icons.push(el.tagName); } })
+      .on("#todo-toggle > #todo-count, #settings-toggle > #update-dot", { element(el) { badges.push(el.getAttribute("id")); } });
+    await html.transform(new Response(Bun.file(join(root, "dist/index.html")))).text();
+    expect(ids).toEqual(["terminal-tts-toggle", "todo-toggle", "mobile-toggle", "settings-toggle"]);
+    expect(icons).toHaveLength(ids.length);
+    expect(badges).toEqual(["todo-count", "update-dot"]);
+  });
+
   test("ships the vector icon source and correctly sized PNG fallbacks", async () => {
     const source = await readFile(join(root, "public/favicon.svg"), "utf8");
     expect(await readFile(join(root, "dist/favicon.svg"), "utf8")).toBe(source);

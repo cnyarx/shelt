@@ -1,17 +1,29 @@
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 import { wrappedFirstLineNumber, wrappedLineText } from "./document-links.ts";
 
-const URL_PATTERN = /\bhttps?:\/\/[^\s"'<>\\\x00-\x1f]+/giu;
+const URL_END = /[\s"'<>\\\x00-\x1f]/u;
 const TRAILING_PUNCTUATION = /(?:[.,;:!?)\]}>'"`]|[\u3002\uff0c\uff1b\uff1a\uff01\uff1f\uff09\u3011\u300b\u3001])+$/u;
 
 export type UrlMatch = { url: string; start: number; end: number };
 
 export function findUrls(text: string): UrlMatch[] {
   const matches: UrlMatch[] = [];
-  for (const match of text.matchAll(URL_PATTERN)) {
-    const trimmed = match[0].replace(TRAILING_PUNCTUATION, "");
-    if (trimmed.length <= "https://".length) continue;
-    matches.push({ url: trimmed, start: match.index!, end: match.index! + trimmed.length });
+  const scheme = /\bhttps?:\/\//giu;
+  for (let match; (match = scheme.exec(text));) {
+    const start = match.index;
+    let before = start;
+    while (before > 0 && /[ \t]/.test(text[before - 1]!)) before--;
+    const markdown = text.endsWith("](", before);
+    let depth = 0, end = scheme.lastIndex;
+    for (; end < text.length && !URL_END.test(text[end]!); end++) {
+      if (!markdown) continue;
+      if (text[end] === "(") depth++;
+      if (text[end] === ")" && depth-- === 0) break;
+    }
+    const raw = text.slice(start, end);
+    const url = markdown ? raw : raw.replace(TRAILING_PUNCTUATION, "");
+    if (url.length > match[0].length) matches.push({ url, start, end: start + url.length });
+    scheme.lastIndex = end;
   }
   return matches;
 }
