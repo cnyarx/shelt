@@ -181,6 +181,44 @@ test.each([
   }
 });
 
+test.each(["", "│", "║"])('matches a build URL across the port and job-number breaks with divider %j', async divider => {
+  const parts = ["http://build.example.test", ":8080/jenkins/job/build-87", "254233/2/"];
+  const side = ["spaces", "agents", "workspace-b", "workspace-c", "notes"], w = 18;
+  const left = (i: number) => divider ? side[i]!.padEnd(w) + divider : "";
+  const content = [`1. build (${parts[0]}`, `   ${parts[1]}`, `   ${parts[2]}) next`, "5. review (https://code.example.test", "   /team/repo/review/123) pending"];
+  const terminal = makeTerminal(content.map((line, i) => left(i) + line), 99, 90);
+  const opened: string[] = [], mount = makeMount();
+  const web = createWebLinkProvider(terminal, mount, url => opened.push(url));
+  for (const n of [2, 3, 1, 5, 4]) {
+    const [link] = await provideLinks(web, n);
+    const url = n <= 3 ? parts.join("") : "https://code.example.test/team/repo/review/123";
+    const part = n <= 3 ? parts[n - 1]! : n === 4 ? "https://code.example.test" : "/team/repo/review/123";
+    const x = left(n - 1).length + content[n - 1]!.indexOf(part) + 1;
+    expect(link?.text).toBe(url);
+    expect(link!.range).toEqual({ start: { x, y: n }, end: { x: x + part.length - 1, y: n } });
+    expect(web.containsCell(x - 1, n)).toBe(false);
+    expect(web.containsCell(x + part.length, n)).toBe(false);
+    link!.hover?.(undefined as never, link!.text);
+    expect(mount.title).toBe(url);
+    link!.activate(undefined as never, link!.text);
+    expect(opened.at(-1)).toBe(url);
+  }
+});
+
+test("keeps links in adjacent panes independent, including a scrollbar and an opener on its own row", async () => {
+  const left = ["(https://left.test/doc", "a.md)", "done"], right = ["report (", "https://right.test", "/api#here) rest"];
+  const terminal = makeTerminal(left.map((s, i) => `${s.padEnd(32)}│${right[i]!.padEnd(32)}${i === 2 ? "▐" : "▕"}`), 99, 66);
+  const web = createWebLinkProvider(terminal, makeMount(), () => undefined);
+  const links = await provideLinks(web, 2);
+  expect(links.map(link => link.text)).toEqual(["https://left.test/doca.md", "https://right.test/api#here"]);
+  expect(web.containsCell(33, 2)).toBe(false);
+  expect(web.containsCell(66, 2)).toBe(false);
+});
+
+test.each([".other.test/path", "@other.test/path", "//other.test/path", ":broken/path", ":65536/path"])('never extends a hostname with an ambiguous continuation %s', continuation => {
+  expect(findUrls(`(https://example.org\n ${continuation})`).map(m => m.url)).toEqual(["https://example.org"]);
+});
+
 test("does not join URLs across separate non-wrapped lines", async () => {
   const terminal = makeTerminal(["check https://example.com/a", "also https://example.com/b"], 99);
   const provider = createWebLinkProvider(terminal, makeMount(), () => undefined);
