@@ -143,6 +143,7 @@ export function documentPathAtMouse(
   screen: Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">,
   clientX: number,
   clientY: number,
+  isWebLink?: (x: number, y: number) => boolean,
 ): string | null {
   if (
     clientX < screen.left || clientX >= screen.right
@@ -152,6 +153,7 @@ export function documentPathAtMouse(
   const cellX = Math.floor((clientX - screen.left) * terminal.cols / screen.width) + 1;
   const viewportRow = Math.floor((clientY - screen.top) * terminal.rows / screen.height);
   const bufferLineNumber = terminal.buffer.active.viewportY + viewportRow + 1;
+  if (isWebLink?.(cellX, bufferLineNumber)) return null;
   return documentLinksForLine(terminal, bufferLineNumber).find((link) => {
     if (bufferLineNumber < link.range.start.y || bufferLineNumber > link.range.end.y) return false;
     const startX = bufferLineNumber === link.range.start.y ? link.range.start.x : 1;
@@ -164,11 +166,12 @@ export function registerDocumentLinkMouseActivation(
   terminal: Terminal,
   mount: HTMLElement,
   open: (url: string) => void,
+  isWebLink?: (x: number, y: number) => boolean,
 ): void {
   let pressedPath: string | null = null;
   const pathAtEvent = (event: DocumentMouseTarget) => {
     const screen = mount.querySelector<HTMLElement>(".xterm-screen")?.getBoundingClientRect();
-    return screen ? documentPathAtMouse(terminal, screen, event.clientX, event.clientY) : null;
+    return screen ? documentPathAtMouse(terminal, screen, event.clientX, event.clientY, isWebLink) : null;
   };
   const suppress = (event: DocumentMouseTarget) => {
     event.preventDefault();

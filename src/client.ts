@@ -261,9 +261,10 @@ function startTerminal() {
   terminalTts = new TerminalTtsController(terminal, mount);
   terminalTts.setVisible(true);
   installOscLinkHandling(terminal, mount, openLink);
-  terminal.registerLinkProvider(createWebLinkProvider(terminal, mount, openLink));
+  const webLinks = createWebLinkProvider(terminal, mount, openLink);
+  terminal.registerLinkProvider(webLinks);
   terminal.registerLinkProvider(createDocumentLinkProvider(terminal, mount, openLink));
-  registerDocumentLinkMouseActivation(terminal, mount, openLink);
+  registerDocumentLinkMouseActivation(terminal, mount, openLink, webLinks.containsCell);
   createDocumentLinkIndicatorLayer(terminal, mount);
   terminal.parser.registerOscHandler(52, async (data) => {
     const clipboard = decodeOsc52(data);

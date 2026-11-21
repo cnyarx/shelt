@@ -35,7 +35,8 @@ describe("terminal links", () => {
     const source = await Bun.file(new URL("../src/client.ts", import.meta.url)).text();
     expect(source).toContain('window.open(url, "_blank", "noopener,noreferrer")');
     expect(source).toContain("installOscLinkHandling(terminal, mount, openLink)");
-    expect(source).toContain("registerLinkProvider(createWebLinkProvider(terminal, mount, openLink))");
+    expect(source).toContain("createWebLinkProvider(terminal, mount, openLink)");
+    expect(source).toContain("terminal.registerLinkProvider(webLinks)");
   });
 });
 

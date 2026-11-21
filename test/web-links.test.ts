@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ILinkProvider, Terminal } from "@xterm/xterm";
 import { createWebLinkProvider, findUrls } from "../src/web-links.ts";
+import { documentPathAtMouse } from "../src/document-links.ts";
 
 function provideLinks(provider: ILinkProvider, line: number) {
   return new Promise<NonNullable<Parameters<Parameters<typeof provider.provideLinks>[1]>[0]>>((resolve) => {
@@ -16,7 +17,8 @@ function makeTerminal(rows: string[], wrappedFrom: number, cols = 48): Terminal 
   }));
   return {
     cols,
-    buffer: { active: { length: lines.length, getLine: (index: number) => lines[index] } },
+    rows: rows.length,
+    buffer: { active: { viewportY: 0, length: lines.length, getLine: (index: number) => lines[index] } },
     onWriteParsed: () => ({ dispose: () => undefined }),
     onResize: () => ({ dispose: () => undefined }),
   } as unknown as Terminal;
@@ -126,6 +128,57 @@ test("joins a URL spread over three wrapped rows", async () => {
     start: { x: 1, y: 1 },
     end: { x: rows[2]!.length, y: 3 },
   });
+});
+
+test.each(["7. 新增文档 (", "[新增文档](", "新增文档（"])('reconstructs an explicitly broken document URL after %s, even when its tail is hovered first', async prefix => {
+  const head = "https://example.org/repo/blob/revision/sql-engine/vector-dedup-staged-fu";
+  const tail = "nctions.md#L48", close = prefix.endsWith("（") ? "）" : ")";
+  const terminal = makeTerminal([`${prefix}${head}`.padEnd(100), `  ${tail}${close} 更新前搜不到，更新后能搜到。`, "8. 以后源文档有改动，还没测。"], 99, 100);
+  const mount = makeMount(), opened: string[] = [];
+  const provider = createWebLinkProvider(terminal, mount, url => opened.push(url));
+  for (const [line, start, end] of [[2, 3, 2 + tail.length], [1, prefix.length + 1, prefix.length + head.length]]) {
+    const links = await provideLinks(provider, line);
+    expect(links).toHaveLength(1);
+    const link = links[0]!;
+    expect(link.range).toEqual({ start: { x: start, y: line }, end: { x: end, y: line } });
+    link.hover?.(undefined as never, link.text);
+    expect(mount.title).toBe(head + tail);
+    link.activate(undefined as never, link.text);
+  }
+  expect(opened).toEqual([head + tail, head + tail]);
+  expect(await provideLinks(provider, 3)).toEqual([]);
+});
+
+test("a continuation that resembles a document path does not open a local preview", async () => {
+  const terminal = makeTerminal(["see (https://example.org/docs/", "sql-engine/functions.md#L48) ./local.md"], 99);
+  const web = createWebLinkProvider(terminal, makeMount(), () => undefined);
+  const screen = { left: 0, top: 0, right: 480, bottom: 20, width: 480, height: 20 };
+  const localAt = (column: number) => documentPathAtMouse(terminal, screen, column * 10 - 5, 15, web.containsCell);
+  expect((await provideLinks(web, 2))[0]?.text).toBe("https://example.org/docs/sql-engine/functions.md#L48");
+  expect(localAt(1)).toBeNull();
+  expect(localAt(8)).toBeNull();
+  expect(localAt(34)).toBe("./local.md");
+});
+
+test("keeps nested parentheses and all three pieces of a URL across hard breaks", async () => {
+  const parts = ["https://example.org/docs/(v", "2)/dir/", "file.md?q=x%20y#L48"];
+  const terminal = makeTerminal([`see (${parts[0]}`, parts[1]!, `${parts[2]}) next`], 99);
+  const provider = createWebLinkProvider(terminal, makeMount(), () => undefined);
+  for (const row of [3, 2, 1]) expect((await provideLinks(provider, row)).map(l => l.text)).toEqual([parts.join("")]);
+});
+
+test.each([
+  ["(https://example.org/doc", "8. more text)"],
+  ["(https://example.org/doc", "this is unrelated prose)"],
+  ["(https://example.org/doc", "file.md", "", "later)"],
+  ["(https://example.org/doc", "https://elsewhere.test/end)"],
+  ["https://example.org/doc", "more.md)"],
+  ["(https://example.org", ".other.test/path)"],
+].map(rows => ({ rows })))("does not glue unrelated lines or extend an authority: %j", async ({ rows }) => {
+  const provider = createWebLinkProvider(makeTerminal(rows, 99), makeMount(), () => undefined);
+  for (let row = 1; row <= rows.length; row++) {
+    expect((await provideLinks(provider, row)).map(l => l.text)).toEqual(findUrls(rows[row - 1]!).map(m => m.url));
+  }
 });
 
 test("does not join URLs across separate non-wrapped lines", async () => {
